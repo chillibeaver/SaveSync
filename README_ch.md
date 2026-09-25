@@ -3,7 +3,7 @@
 用 Ludusavi 找游戏存档，用 Syncthing 在多台 Windows 游戏设备之间同步，由一台常开的服务器负责中转。
 
 >
-> 文中的例子用三台设备说明：台式机 **PC**、掌机 **Claw**、常开服务器 **NAS**。换成你自己的设备即可。第一次使用请先看“二、前置要求”和“三、首次安装步骤”。
+> 文中的例子用三台设备说明：台式机 **PC**、掌机 **Handheld**、常开服务器 **NAS**。换成你自己的设备即可。第一次使用请先看“二、前置要求”和“三、首次安装步骤”。
 
 ---
 
@@ -14,8 +14,8 @@
 | 角色 | 负责什么 | 什么时候工作 |
 |---|---|---|
 | **Ludusavi** | 找出每个游戏的存档在哪 | 只在 gamesync 扫描时被调用 |
-| **Syncthing**（PC、Claw、NAS 上各一个） | 实际搬运存档文件，双向同步 | 一直在后台 |
-| **NAS（beeme）** | 永远开着的中转站，保管最新存档 | 一直在后台 |
+| **Syncthing**（PC、Handheld、NAS 上各一个） | 实际搬运存档文件，双向同步 | 一直在后台 |
+| **NAS** | 永远开着的中转站，保管最新存档 | 一直在后台 |
 | **gamesync** | 把存档路径配置进三台机器的 Syncthing | 只在你运行它的时候 |
 
 **gamesync 只在“建立共享”那一刻起作用，平时同步存档的全是 Syncthing。** 它代替的是你以前手动做的事：打开 Ludusavi 复制路径，再贴进 Syncthing。
@@ -23,35 +23,35 @@
 ### 以 Hades II 为例
 
 **1. 在 PC 上运行 `share`**
-- 调用 Ludusavi 扫描，找到存档目录 `C:\Users\ramray\Saved Games\Hades II`。
-- 去掉 Steam 游戏，列出其余的。你选 Hades II，再选设备 clawEX。
+- 调用 Ludusavi 扫描，找到存档目录 `C:\Users\yourname\Saved Games\Hades II`。
+- 去掉 Steam 游戏，列出其余的。你选 Hades II，再选设备 Handheld。
 - 脚本自动完成：
-  - 在 **NAS** 上建共享 `gs-hades-ii`，设成同步给 PC 和 Claw；
+  - 在 **NAS** 上建共享 `gs-hades-ii`，设成同步给 PC 和 Handheld；
   - 在 **PC** 上建同一个共享，路径是 PC 上的存档目录；
-  - 在 **登记表** 里留一张纸条：“Hades II 放在 `<home>\Saved Games\Hades II`，要给 Claw”。
+  - 在 **登记表** 里留一张纸条：“Hades II 放在 `<home>\Saved Games\Hades II`，要给 Handheld”。
 
-**2. Claw 开机后运行 `accept`**
-- 读登记表里的纸条，把 `<home>` 换成 Claw 自己的用户目录。
-- 用这个路径在 Claw 的 Syncthing 里接受共享，然后从 NAS 拉下最新存档。
+**2. Handheld 开机后运行 `accept`**
+- 读登记表里的纸条，把 `<home>` 换成 Handheld 自己的用户目录。
+- 用这个路径在 Handheld 的 Syncthing 里接受共享，然后从 NAS 拉下最新存档。
 
 **3. 之后全自动，gamesync 不用再管**
-- 在 PC 上玩，存档变了：推给 NAS。Claw 开着的话，也直接推给 Claw。
-- 关掉 PC、打开 Claw：Claw 从 NAS 拿到最新存档。
-- 在 Claw 上玩完：推回 NAS，PC 下次开机再拿。
+- 在 PC 上玩，存档变了：推给 NAS。Handheld 开着的话，也直接推给 Handheld。
+- 关掉 PC、打开 Handheld：Handheld 从 NAS 拿到最新存档。
+- 在 Handheld 上玩完：推回 NAS，PC 下次开机再拿。
 
-每个游戏只需要 share 一次、accept 一次。反过来也一样：先在 Claw 上玩的游戏，就在 Claw 上 share，到 PC 上 accept。
+每个游戏只需要 share 一次、accept 一次。反过来也一样：先在 Handheld 上玩的游戏，就在 Handheld 上 share，到 PC 上 accept。
 
 ### 登记表（gamesync-registry）是什么
 
 它是一个**传纸条用的文件夹**，只放说明，不放存档。它本身也是一个 Syncthing 共享，三台机器内容一样：
 
 - PC：`%APPDATA%\gamesync\registry`
-- Claw：`%APPDATA%\gamesync\registry`
+- Handheld：`%APPDATA%\gamesync\registry`
 - NAS：`/srv/media/game/sync/gamesync-registry`
 
 每共享一个游戏，里面就多一个小文件，比如 `gs-hades-ii.json`，写着游戏名、共享 ID、存档位置（用 `<home>` 代替用户名）、给哪些设备，以及不同步的设置文件。
 
-**为什么需要它**：Syncthing 发给对方的共享邀请只写了“有个文件夹要给你”，没写放在哪。Syncthing 本来就不传路径。accept 就是靠这张纸条，才知道该放到对方电脑的哪个目录。PC 和 Claw 用户名不同也没关系。
+**为什么需要它**：Syncthing 发给对方的共享邀请只写了“有个文件夹要给你”，没写放在哪。Syncthing 本来就不传路径。accept 就是靠这张纸条，才知道该放到对方电脑的哪个目录。PC 和 Handheld 用户名不同也没关系。
 
 > 打个比方：Syncthing 的邀请是快递单，登记表是包裹附带的说明书，accept 就是照着说明书把东西放进对的柜子。
 
@@ -59,7 +59,7 @@
 
 ### 为什么要调用 NAS 的 API
 
-NAS 只会把共享同步给它配置里写了的设备。gamesync 建共享时，直接在 NAS 上把共享设成“同步给 PC 和 Claw”。这样两台机器不同时开机，也能通过 NAS 中转。
+NAS 只会把共享同步给它配置里写了的设备。gamesync 建共享时，直接在 NAS 上把共享设成“同步给 PC 和 Handheld”。这样两台机器不同时开机，也能通过 NAS 中转。
 
 ---
 
@@ -189,7 +189,7 @@ NAS 只会把共享同步给它配置里写了的设备。gamesync 建共享时�
 ### share 的选项
 - `--dry-run`：只看列表和要同步的目录，不创建任何共享。第一次用建议先跑一下。
 - `--all`：连被排除的游戏也显示，比如 Steam 游戏，并标出排除原因。被排除的游戏也可以选。
-- `--devices clawEX`：直接指定目标设备，不再询问。
+- `--devices Handheld`：直接指定目标设备，不再询问。
 - `--yes`：不再逐个确认。没有指定下面两个参数时，默认不同步设置文件。
 - `--include-config`：设置文件也一起同步，不再询问。
 - `--exclude-config`：不同步设置文件，也不再询问。
@@ -212,13 +212,13 @@ NAS 只会把共享同步给它配置里写了的设备。gamesync 建共享时�
 - 如果和已有的共享互相包含，会跳过并提示。
 
 ### 设置文件（分辨率、画质、按键）
-PC 和 Claw 的屏幕不一样，画面设置不应该互相覆盖。Ludusavi 的数据库会给每个文件标上“存档”或“设置”，share 时会按这个区分：
+PC 和 Handheld 的屏幕不一样，画面设置不应该互相覆盖。Ludusavi 的数据库会给每个文件标上“存档”或“设置”，share 时会按这个区分：
 
 - 如果检测到设置文件，会列出来并询问 `Also sync these settings files? [y/N]`。**直接回车就是不同步。**
 - 选择不同步时：
   - 只按存档文件决定同步哪个目录。比如 FragPunk 只同步 `Saved\SaveGames`，整个 `Config` 目录不同步。
   - 同步目录里如果还有设置文件，会加进 Syncthing 的忽略列表（`.stignore`）。比如 Hades II 同步整个目录，但不同步 `GlobalSettingsWin.sjson`。
-  - 忽略规则会写进登记表，Claw 运行 accept 时自动套用。每台设备保留自己的设置，互不影响。
+  - 忽略规则会写进登记表，Handheld 运行 accept 时自动套用。每台设备保留自己的设置，互不影响。
 - 有的游戏只有设置文件，存档在服务器上（比如 Apex Legends、Marathon）。这类游戏会显示 “Only settings files found” 并跳过。
 - `share --dry-run` 会列出每个游戏要忽略哪些设置。
 
@@ -228,7 +228,7 @@ PC 和 Claw 的屏幕不一样，画面设置不应该互相覆盖。Ludusavi �
 - 标签来自 PCGamingWiki，个别游戏可能标错。没有标签的文件一律当作存档同步，宁可多同步也不会丢进度。
 
 ### 已有存档的冲突
-如果 Claw 上已经有同一个游戏的存档，接受共享后交给 Syncthing 合并：较新的文件胜出，较旧的一版会改名成 `xxx.sync-conflict-日期-xxx` 留在原处，可以手动删掉。
+如果 Handheld 上已经有同一个游戏的存档，接受共享后交给 Syncthing 合并：较新的文件胜出，较旧的一版会改名成 `xxx.sync-conflict-日期-xxx` 留在原处，可以手动删掉。
 
 ### 版本备份
 NAS 上的每个存档共享都开了版本备份，每个文件保留最近 10 个旧版本，放在 NAS 对应目录下的 `.stversions` 里。存档被误覆盖时可以去那里找回。
