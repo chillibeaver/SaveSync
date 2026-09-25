@@ -1,4 +1,4 @@
-# gamesync 使用说明
+# SaveSync
 
 用 Ludusavi 找游戏存档，用 Syncthing 在多台 Windows 游戏设备之间同步，由一台常开的服务器负责中转。
 
