@@ -1,0 +1,790 @@
+{
+ "Absolum": {
+  "files": {
+   "<winLocalAppData>/Absolum_SaveGame_Steam/Config.txt": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<winLocalAppData>/Absolum_SaveGame_Steam/Save.bin": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Absolum": {}
+  },
+  "steam": {
+   "id": 1904480
+  },
+  "id": {
+   "steamExtra": [
+    3713610,
+    3812410
+   ]
+  },
+  "cloud": {
+   "steam": true
+  }
+ },
+ "Hades II": {
+  "files": {
+   "<home>/Library/Application Support/Supergiant Games/Hades II/Profile*.sav": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   },
+   "<home>/Saved Games/Hades II/GlobalSettingsWin.sjson": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<home>/Saved Games/Hades II/Profile*.sav": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<winLocalAppData>/Packages/SupergiantGamesLLC.HadesII_q53c1yqmx7pha/SystemAppData/wgs": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "microsoft"
+     }
+    ]
+   },
+   "<winLocalAppData>Path/Packages/SupergiantGamesLLC.HadesII_q53c1yqmx7pha/SystemAppData/wgs": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "microsoft"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Hades II": {}
+  },
+  "steam": {
+   "id": 1145350
+  },
+  "id": {
+   "lutris": "hades-ii"
+  },
+  "cloud": {
+   "epic": true,
+   "steam": true
+  }
+ },
+ "Outer Wilds": {
+  "files": {
+   "<home>/AppData/LocalLow/Mobius Digital/Outer Wilds/Saves": {
+    "tags": [
+     "save",
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<home>/AppData/LocalLow/Mobius Digital/Outer Wilds/SteamSaves": {
+    "tags": [
+     "save",
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "steam"
+     }
+    ]
+   },
+   "<winLocalAppData>/Packages/AnnapurnaInteractive.OuterWilds_c96c51jf6wkvm/SystemAppData/wgs": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "microsoft"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Outer Wilds": {}
+  },
+  "registry": {
+   "HKEY_CURRENT_USER/Software/Mobius Digital/Outer Wilds": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "store": "steam"
+     }
+    ]
+   }
+  },
+  "steam": {
+   "id": 753640
+  },
+  "id": {
+   "lutris": "outer-wilds",
+   "steamExtra": [
+    1622100
+   ]
+  },
+  "cloud": {
+   "epic": true,
+   "steam": true
+  }
+ },
+ "Forza Horizon 6": {
+  "files": {
+   "<winLocalAppData>/ForzaHorizon6/LocalStorage_Shared": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "steam"
+     }
+    ]
+   },
+   "<winLocalAppData>/ForzaHorizon6/LocalStorage_Shared/User_<storeUserId>": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "steam"
+     }
+    ]
+   },
+   "C:/XboxGames/GameSave/pgs/u_<storeUserId>_16D460": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "microsoft"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "ForzaHorizon6": {}
+  },
+  "steam": {
+   "id": 2483190
+  },
+  "id": {
+   "steamExtra": [
+    4439260,
+    4439280,
+    4439300,
+    4439750,
+    4440380,
+    4444140,
+    4444150,
+    4562050
+   ]
+  }
+ },
+ "Dragon Quest I & II HD-2D Remake": {
+  "files": {
+   "<winDocuments>/My Games/DRAGON QUEST I and II HD-2D Remake/Steam/<storeUserId>/SaveGames": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "steam"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "DRAGON QUEST I and II HD-2D Remake": {}
+  },
+  "steam": {
+   "id": 2893570
+  },
+  "id": {
+   "lutris": "dragon-quest-i-ii-hd-2d-remake"
+  },
+  "cloud": {
+   "steam": true
+  }
+ },
+ "Disco Elysium": {
+  "files": {
+   "<home>/AppData/LocalLow/ZAUM Studio/Disco Elysium/SaveGames": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<home>/AppData/LocalLow/ZAUM Studio/Disco Elysium/Settings/Settings.json": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<home>/Library/Application Support/ZAUM Studio/Disco Elysium/SaveGames": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   },
+   "<home>/Library/Application Support/ZAUM Studio/Disco Elysium/Settings": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   },
+   "<home>/Library/Application Support/com.zaumstudio.discoelysium/SaveGames": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   },
+   "<home>/Library/Application Support/com.zaumstudio.discoelysium/Settings": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Disco Elysium": {}
+  },
+  "registry": {
+   "HKEY_CURRENT_USER/Software/ZAUM Studio/Disco Elysium": {
+    "tags": [
+     "config"
+    ]
+   }
+  },
+  "steam": {
+   "id": 632470
+  },
+  "gog": {
+   "id": 1771589310
+  },
+  "id": {
+   "gogExtra": [
+    1370620137,
+    1377256194,
+    1497779763,
+    1618612563,
+    1820315840
+   ],
+   "lutris": "disco-elysium",
+   "steamExtra": [
+    1173140
+   ]
+  },
+  "cloud": {
+   "epic": true,
+   "gog": true,
+   "steam": true
+  }
+ },
+ "Astlibra Revision": {
+  "files": {
+   "<winLocalAppData>/ASTLIBRA/SAVE/**/*.*": {
+    "when": [
+     {
+      "store": "steam"
+     }
+    ]
+   },
+   "<winLocalAppData>/ASTLIBRA/SAVE/*.*": {
+    "when": [
+     {
+      "os": "linux",
+      "store": "steam"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "ASTLIBRA": {}
+  },
+  "steam": {
+   "id": 1718570
+  },
+  "id": {
+   "lutris": "astlibra-revision"
+  },
+  "cloud": {
+   "steam": true
+  }
+ },
+ "Dota 2": {
+  "files": {
+   "<base>/dota/cfg": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "store": "steam"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "dota 2 beta": {}
+  },
+  "steam": {
+   "id": 570
+  },
+  "id": {
+   "steamExtra": [
+    652720,
+    1241930
+   ]
+  },
+  "cloud": {
+   "steam": true
+  }
+ },
+ "PUBG: Battlegrounds": {
+  "files": {
+   "<winLocalAppData>/TslGame/Saved/Config/WindowsNoEditor": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "PUBG": {}
+  },
+  "steam": {
+   "id": 578080
+  },
+  "id": {
+   "lutris": "playerunknowns-battlegrounds"
+  }
+ },
+ "Sid Meier's Civilization VI": {
+  "files": {
+   "<home>/Library/Application Support/Sid Meier's Civilization VI": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   },
+   "<home>/Library/Application Support/Sid Meier's Civilization VI/Saves": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   },
+   "<home>/Library/Containers/Civilization VI/Data/Library/Application Support/Sid Meier’s Civilization VI/Saves": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "mac"
+     }
+    ]
+   },
+   "<winDocuments>/My Games/Sid Meier's Civilization VI (Epic)/Saves": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "epic"
+     }
+    ]
+   },
+   "<winDocuments>/My Games/Sid Meier's Civilization VI/Saves": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<winLocalAppData>/Firaxis Games/Sid Meier's Civilization VI": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<xdgData>/aspyr-media/Sid Meier's Civilization VI": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "linux"
+     }
+    ]
+   },
+   "<xdgData>/aspyr-media/Sid Meier's Civilization VI/Saves": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "linux"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Sid Meier's Civilization VI": {}
+  },
+  "steam": {
+   "id": 289070
+  },
+  "id": {
+   "lutris": "sid-meiers-civilization-vi",
+   "steamExtra": [
+    404350,
+    512030,
+    512031,
+    512032,
+    512033,
+    512034,
+    512035,
+    521770,
+    537570,
+    597260,
+    645400,
+    645401,
+    645402,
+    947510,
+    1253990,
+    1308090,
+    2158250,
+    2173130,
+    2173131
+   ]
+  }
+ },
+ "Noita": {
+  "files": {
+   "<home>/AppData/LocalLow/Nolla_Games_Noita/save00": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<home>/AppData/LocalLow/Nolla_Games_Noita/save_shared/config.xml": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Noita": {}
+  },
+  "steam": {
+   "id": 881100
+  },
+  "gog": {
+   "id": 1310457090
+  },
+  "id": {
+   "gogExtra": [
+    1296840864
+   ],
+   "lutris": "noita",
+   "steamExtra": [
+    1161410
+   ]
+  },
+  "cloud": {
+   "gog": true,
+   "steam": true
+  }
+ },
+ "Half-Life": {
+  "files": {
+   "<base>/valve/*.cfg": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "store": "steam"
+     }
+    ]
+   },
+   "<base>/valve/SAVE": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     },
+     {
+      "os": "linux"
+     },
+     {
+      "os": "mac"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Half-Life": {}
+  },
+  "registry": {
+   "HKEY_CURRENT_USER/Software/Valve/Half-Life": {
+    "tags": [
+     "config"
+    ]
+   }
+  },
+  "steam": {
+   "id": 70
+  },
+  "id": {
+   "lutris": "half-life",
+   "steamExtra": [
+    323130
+   ]
+  },
+  "cloud": {
+   "steam": true
+  }
+ },
+ "Venineth": {
+  "files": {
+   "<winLocalAppData>/Game/Saved/Config": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<winLocalAppData>/Game/Saved/SaveGames": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "Venineth": {}
+  },
+  "steam": {
+   "id": 976500
+  },
+  "cloud": {
+   "steam": true
+  }
+ },
+ "FragPunk": {
+  "files": {
+   "<winLocalAppData>/FragPunk/Steam/Saved/Config/WindowsClient": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "steam"
+     }
+    ]
+   },
+   "<winLocalAppData>/FragPunk/Steam/Saved/SaveGames": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "steam"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "FragPunk": {}
+  },
+  "steam": {
+   "id": 2943650
+  },
+  "id": {
+   "steamExtra": [
+    3407330
+   ]
+  }
+ },
+ "The Last of Us Part I": {
+  "files": {
+   "<home>/Saved Games/The Last of Us Part I/users/<storeUserId>/savedata": {
+    "tags": [
+     "save"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   },
+   "<home>/Saved Games/The Last of Us Part I/users/<storeUserId>/screeninfo.cfg": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "The Last of Us Part I": {}
+  },
+  "steam": {
+   "id": 1888930
+  },
+  "id": {
+   "lutris": "the-last-of-us-part-i"
+  },
+  "cloud": {
+   "steam": true
+  }
+ },
+ "Snowbreak: Containment Zone": {
+  "files": {
+   "<winLocalAppData>/Game/Saved/Config": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "epic"
+     }
+    ]
+   },
+   "<winLocalAppData>/Game/Saved/Config/WindowsNoEditor": {
+    "tags": [
+     "config"
+    ],
+    "when": [
+     {
+      "os": "windows",
+      "store": "steam"
+     }
+    ]
+   }
+  },
+  "installDir": {
+   "SNOWBREAK": {}
+  },
+  "steam": {
+   "id": 2668080
+  }
+ }
+}
