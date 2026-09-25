@@ -1,0 +1,62 @@
+name: Build binary
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - gamesync.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Run one build at a time, so two quick pushes can't get the same version number
+concurrency:
+  group: build-exe
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # need all tags to work out the next version
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run unit tests
+        run: |
+          if (Test-Path test_gamesync.py) { python -m unittest -v }
+
+      - name: Work out next version
+        id: ver
+        run: |
+          $max = 0
+          git tag --list 'v*' | ForEach-Object {
+            if ($_ -match '^v(\d+)$') {
+              $n = [int]$Matches[1]
+              if ($n -gt $max) { $max = $n }
+            }
+          }
+          $version = 'v{0:D3}' -f ($max + 1)
+          Write-Host "Next version: $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build exe
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          pyinstaller --onefile --console --name gamesync gamesync.py
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          gh release create $env:VERSION dist/gamesync.exe `
+            --target $env:GITHUB_SHA `
+            --title "gamesync $env:VERSION" `
+            --generate-notes
