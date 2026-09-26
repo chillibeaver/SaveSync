@@ -53,7 +53,7 @@ You're done when you see `Init complete.` Run `5. status` to check the connectio
 
 ## SteamOS
 
-Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. In Desktop Mode, open Konsole and run:
+Supported: **Windows games added to Steam as non-Steam games and run with Proton**. In Desktop Mode, open Konsole and run:
 
 ```
 curl -OL https://raw.githubusercontent.com/chillibeaver/Savething/refs/heads/main/savething.py
