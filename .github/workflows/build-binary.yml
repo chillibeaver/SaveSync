@@ -21,11 +21,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            file: savething.exe
+            name: savething
             asset: savething.exe
           # oldest supported runner: a binary built against an older glibc also runs on newer SteamOS
           - os: ubuntu-22.04
-            file: savething
+            name: savething-linux
             asset: savething-linux
     runs-on: ${{ matrix.os }}
 
@@ -40,11 +40,9 @@ jobs:
         run: python -m unittest -v
 
       - name: Build binary
-        shell: bash
         run: |
           python -m pip install --upgrade pip pyinstaller
-          pyinstaller --onefile --console --name savething savething.py
-          mv "dist/${{ matrix.file }}" "dist/${{ matrix.asset }}"
+          pyinstaller --onefile --console --name ${{ matrix.name }} savething.py
 
       - uses: actions/upload-artifact@v4
         with:
