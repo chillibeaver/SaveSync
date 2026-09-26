@@ -51,6 +51,22 @@ You're done when you see `Init complete.` Run `5. status` to check the connectio
 
 ---
 
+## SteamOS
+
+Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. In Desktop Mode, open Konsole and run:
+
+```
+curl -OL https://raw.githubusercontent.com/chillibeaver/Savething/refs/heads/main/savething.py
+python3 savething.py
+```
+
+- **Install** Ludusavi and SyncThingy (Syncthing) from Discover. Both are found automatically.
+- **Start the game once** before `accept`, so Proton creates its prefix.
+- **Shortcut names don't matter.** Savething finds which shortcut runs the game; if it can't tell, it asks once and remembers.
+- Only saves on `C:` can be mapped. Saves on other drives are skipped.
+
+---
+
 ## Usage
 
 Double-click `savething.exe` to open the menu, or run the commands directly:
@@ -101,20 +117,6 @@ SteamOS:    .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades
 - **Backups:** the server keeps the last 10 versions of every save file in `.stversions` inside the game's folder.
 - **Unshare** keeps all save files. Other devices stop syncing the next time they run `accept`.
 - **Don't delete the `savething-registry` folder.** `accept` needs it to know where each game's saves go.
-
-## SteamOS
-
-Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. In Desktop Mode, open Konsole and run:
-
-```
-curl -OL https://raw.githubusercontent.com/chillibeaver/Savething/refs/heads/main/savething.py
-python3 savething.py
-```
-
-- **Install** Ludusavi and SyncThingy (Syncthing) from Discover. Both are found automatically.
-- **Start the game once** before `accept`, so Proton creates its prefix.
-- **Shortcut names don't matter.** Savething finds which shortcut runs the game; if it can't tell, it asks once and remembers.
-- Only saves on `C:` can be mapped. Saves on other drives are skipped.
 
 ---
 
