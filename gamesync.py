@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """gamesync - find game saves with Ludusavi, sync them between devices with Syncthing,
 using an always-on NAS as the hub.
 
@@ -20,6 +19,7 @@ import io
 import json
 import os
 import re
+import shutil
 import socket
 import ssl
 import subprocess
@@ -28,6 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,12 +39,14 @@ FOLDER_PREFIX = "gs-"
 LABEL_PREFIX = "Save - "
 IS_WINDOWS = os.name == "nt"
 GLOB_CHARS = set("*?[")
+LUDUSAVI_FLATPAK = "com.github.mtkennerly.ludusavi"
+PROTON_USER = "steamuser"
 DEFAULT_CONFIG = {
     "nas_url": "",
     "nas_api_key": "",
     "nas_folder_root": "/srv/media/game/sync",
     "nas_versioning_keep": 10,
-    "exclude_device_patterns": ["deck"],
+    "exclude_device_patterns": [],
     "ludusavi": "ludusavi",
 }
 
@@ -64,14 +67,21 @@ def norm(p) -> str:
     return s
 
 
+def _ci(s) -> bool:
+    """Windows paths and paths inside a Wine/Proton drive_c are case-insensitive."""
+    return IS_WINDOWS or bool(re.match(r"^[A-Za-z]:", s)) or bool(re.search(r"/drive_c(?:/|$)", s))
+
+
 def pkey(p) -> str:
-    """Comparison key: Windows paths are case-insensitive."""
+    """Comparison key: Windows (and Wine drive_c) paths are case-insensitive."""
     s = norm(p)
-    return s.casefold() if IS_WINDOWS or re.match(r"^[A-Za-z]:", s) else s
+    return s.casefold() if _ci(s) else s
 
 
 def is_under(child, parent) -> bool:
-    c, p = pkey(child), pkey(parent)
+    c, p = norm(child), norm(parent)
+    if _ci(c) or _ci(p):
+        c, p = c.casefold(), p.casefold()
     return c == p or c.startswith(p + "/")
 
 
@@ -84,32 +94,66 @@ def home_dir() -> str:
     return norm(os.environ.get("GAMESYNC_HOME") or Path.home())
 
 
+@dataclass(frozen=True)
+class Env:
+    """Where a game's saves live: a home dir, whether it follows Windows rules, and for a
+    Proton prefix the drive_c dir that stands in for C:."""
+    home: str
+    win: bool
+    drive_c: str | None = None
+
+
+def as_env(home) -> Env:
+    """Accept an Env or a plain home dir (Windows rules if it has a drive letter)."""
+    if isinstance(home, Env):
+        return home
+    h = norm(home)
+    return Env(h, IS_WINDOWS or bool(re.match(r"^[A-Za-z]:", h)))
+
+
+def prefix_env(pfx) -> Env:
+    """Env for a Proton prefix (the dir that contains drive_c)."""
+    c = norm(pfx) + "/drive_c"
+    return Env(c + "/users/" + PROTON_USER, True, c)
+
+
 def to_portable(path, home) -> str:
-    """Make a path portable: paths under the home dir become <home>/..., others stay absolute."""
-    path, home = norm(path), norm(home)
-    if is_under(path, home):
-        return "<home>" + path[len(home):]
+    """Make a path portable: paths under the home dir become <home>/..., others stay absolute.
+    Inside a Proton prefix, other drive_c paths become C:/..."""
+    env = as_env(home)
+    path, h = norm(path), norm(env.home)
+    if is_under(path, h):
+        return "<home>" + path[len(h):]
+    if env.drive_c and is_under(path, env.drive_c):
+        return "C:" + path[len(norm(env.drive_c)):]
     return path
 
 
-def from_portable(portable, home) -> str:
+def from_portable(portable, home) -> str | None:
+    """Inverse of to_portable. In a Proton prefix, returns None for drives other than C:."""
+    env = as_env(home)
     if portable.startswith("<home>"):
-        return norm(home) + portable[len("<home>"):]
-    return norm(portable)
+        return norm(env.home) + portable[len("<home>"):]
+    p = norm(portable)
+    if env.drive_c and re.match(r"^[A-Za-z]:", p):
+        return norm(env.drive_c) + p[2:] if p[0] in "Cc" else None
+    return p
 
 
 def placeholder_map(home) -> dict:
-    h = norm(home)
-    if IS_WINDOWS:
+    env = as_env(home)
+    h = norm(env.home)
+    if env.win:
+        c = norm(env.drive_c) if env.drive_c else "C:"
         return {
             "<home>": h,
             "<winAppData>": h + "/AppData/Roaming",
             "<winLocalAppData>": h + "/AppData/Local",
             "<winLocalAppDataLow>": h + "/AppData/LocalLow",
             "<winDocuments>": h + "/Documents",
-            "<winPublic>": "C:/Users/Public",
-            "<winProgramData>": "C:/ProgramData",
-            "<winDir>": "C:/Windows",
+            "<winPublic>": c + "/Users/Public",
+            "<winProgramData>": c + "/ProgramData",
+            "<winDir>": c + "/Windows",
             "<osUserName>": h.rsplit("/", 1)[-1],
         }
     return {
@@ -140,14 +184,18 @@ def pattern_prefix(pattern, home) -> str | None:
 
 def broad_dirs(home) -> list[str]:
     """Directories too broad to sync as a whole."""
-    h = norm(home)
-    if IS_WINDOWS:
+    env = as_env(home)
+    h = norm(env.home)
+    if env.win:
         rel = ["", "AppData", "AppData/Local", "AppData/LocalLow", "AppData/Roaming",
                "AppData/Local/Packages", "Documents", "Documents/My Games", "Saved Games",
                "Desktop", "Downloads", "Music", "Pictures", "Videos"]
-        extra = ["C:", "C:/Users", "C:/Users/Public", "C:/Users/Public/Documents",
-                 "C:/ProgramData", "C:/Program Files", "C:/Program Files (x86)", "C:/Windows",
-                 "C:/XboxGames", "C:/XboxGames/GameSave", "C:/XboxGames/GameSave/pgs"]
+        c = norm(env.drive_c) if env.drive_c else "C:"
+        extra = [c + x for x in ("", "/Users", "/Users/Public", "/Users/Public/Documents",
+                                 "/ProgramData", "/Program Files", "/Program Files (x86)", "/Windows",
+                                 "/XboxGames", "/XboxGames/GameSave", "/XboxGames/GameSave/pgs")]
+        if env.drive_c:
+            extra.append(parent_of(c))  # the prefix dir itself (user.reg etc.)
     else:
         rel = ["", ".local", ".local/share", ".config", "Documents", ".steam"]
         extra = ["/", "/home", "/tmp", "/usr", "/var"]
@@ -229,8 +277,9 @@ def merge_siblings(roots, broad) -> list[str]:
         for i in range(len(roots)):
             for j in range(i + 1, len(roots)):
                 a, b = norm(roots[i]).split("/"), norm(roots[j]).split("/")
+                ci = _ci(roots[i]) or _ci(roots[j])
                 n = 0
-                while n < min(len(a), len(b)) and pkey(a[n]) == pkey(b[n]):
+                while n < min(len(a), len(b)) and (a[n].casefold() == b[n].casefold() if ci else a[n] == b[n]):
                     n += 1
                 common = "/".join(a[:n])
                 if n and _depth_below_broad(common, broad) >= 2:
@@ -266,7 +315,7 @@ def pattern_regex(pattern, home):
         else:
             out.append(re.escape(s[i]))
             i += 1
-    flags = re.IGNORECASE if IS_WINDOWS or re.match(r"^[A-Za-z]:", s) else 0
+    flags = re.IGNORECASE if as_env(home).win else 0
     return re.compile("".join(out) + "(?:/.*)?$", flags)
 
 
@@ -327,6 +376,10 @@ def ignore_line(rel, windows) -> str:
 
 # ---------------------------------------------------------------- Steam
 
+def steam_roots() -> list[str]:
+    return [os.path.expanduser("~/.steam/steam"), os.path.expanduser("~/.local/share/Steam")]
+
+
 def steam_libraries() -> list[str]:
     roots = []
     if IS_WINDOWS:
@@ -337,7 +390,7 @@ def steam_libraries() -> list[str]:
         except OSError:
             pass
     else:
-        roots += [os.path.expanduser("~/.steam/steam"), os.path.expanduser("~/.local/share/Steam")]
+        roots += steam_roots()
     libs = {}
     for r in roots:
         if not os.path.isdir(r):
@@ -373,6 +426,147 @@ def steam_ids_of(entry) -> set[int]:
     for x in (entry.get("id") or {}).get("steamExtra") or []:
         ids.add(int(x))
     return ids
+
+
+def parse_binary_vdf(data: bytes) -> dict:
+    """Parse Steam's binary KeyValues format (shortcuts.vdf)."""
+    pos = 0
+
+    def cstr():
+        nonlocal pos
+        end = data.index(b"\0", pos)
+        out = data[pos:end].decode("utf-8", errors="replace")
+        pos = end + 1
+        return out
+
+    def obj():
+        nonlocal pos
+        out = {}
+        while pos < len(data):
+            t = data[pos]
+            pos += 1
+            if t == 0x08:
+                return out
+            key = cstr()
+            if t == 0x00:
+                out[key] = obj()
+            elif t == 0x01:
+                out[key] = cstr()
+            elif t in (0x02, 0x03):  # int32, float32
+                out[key] = int.from_bytes(data[pos:pos + 4], "little")
+                pos += 4
+            elif t in (0x07, 0x0A):  # uint64, int64
+                out[key] = int.from_bytes(data[pos:pos + 8], "little")
+                pos += 8
+            else:
+                raise ValueError(f"unknown binary VDF type {t:#x} at {pos - 1}")
+        return out
+
+    return obj()
+
+
+@dataclass(frozen=True)
+class Shortcut:
+    name: str
+    exe: str = ""
+    start_dir: str = ""
+
+    def keys(self) -> set[str]:
+        """Names this shortcut may be known by: its name, the exe's file name, and the
+        folders on the exe and start-in paths (usually the game's install folder)."""
+        out = {title_key(self.name)}
+        for p in (self.exe, self.start_dir):
+            parts = [x for x in norm(p.strip().strip('"')).split("/") if x]
+            if parts and p is self.exe:
+                out.add(title_key(parts[-1].rsplit(".", 1)[0]))
+                parts = parts[:-1]
+            out |= {title_key(x) for x in parts}
+        return out - {""}
+
+
+def title_key(name) -> str:
+    return re.sub(r"[\W_]+", "", name.casefold())
+
+
+def shortcut_entries(data: bytes) -> dict[int, Shortcut]:
+    """{app ID: Shortcut} of the non-Steam shortcuts in a shortcuts.vdf. The app ID is also
+    the name of the shortcut's Proton prefix dir in steamapps/compatdata."""
+    out = {}
+    for sc in (parse_binary_vdf(data).get("shortcuts") or {}).values():
+        if not isinstance(sc, dict):
+            continue
+        low = {k.lower(): v for k, v in sc.items()}
+        name = low.get("appname") or ""
+        appid = low.get("appid")
+        if not appid:  # older Steam: derived from exe + name
+            appid = zlib.crc32((low.get("exe", "") + name).encode()) | 0x80000000
+        if name:
+            out[int(appid)] = Shortcut(name, low.get("exe", ""), low.get("startdir", ""))
+    return out
+
+
+def steam_shortcuts() -> dict[int, Shortcut]:
+    out = {}
+    for r in steam_roots():
+        for p in Path(r).glob("userdata/*/config/shortcuts.vdf"):
+            try:
+                out.update(shortcut_entries(p.read_bytes()))
+            except (OSError, ValueError, IndexError):
+                continue
+    return out
+
+
+def proton_prefix_of(path, libs) -> tuple[int, str] | None:
+    """(app ID, prefix dir) if path is inside a Proton prefix's drive_c."""
+    p = norm(path)
+    for lib in libs:
+        base = norm(lib) + "/steamapps/compatdata/"
+        if p.startswith(base):
+            m = re.match(r"(\d+)/pfx/drive_c(?:/|$)", p[len(base):])
+            if m:
+                return int(m.group(1)), base + m.group(1) + "/pfx"
+    return None
+
+
+def find_prefix(appid, libs) -> str | None:
+    for lib in libs:
+        pfx = norm(lib) + f"/steamapps/compatdata/{appid}/pfx"
+        if os.path.isdir(pfx + "/drive_c/users/" + PROTON_USER):
+            return pfx
+    return None
+
+
+def pick_proton_files(paths, libs, shortcuts):
+    """Keep a game's files from one non-Steam shortcut's Proton prefix.
+
+    Returns (env, files, reason): reason is set when nothing can be synced. Files outside
+    drive_c (e.g. the prefix's *.reg registry files) are never synced.
+    """
+    groups = {}
+    steam_hit = False
+    for f in paths:
+        hit = proton_prefix_of(f, libs)
+        if not hit:
+            continue
+        if hit[0] not in shortcuts:
+            steam_hit = True
+            continue
+        groups.setdefault(hit, []).append(f)
+    if not groups:
+        if steam_hit:
+            return None, [], "Steam game (Proton)"
+        if any(re.search(r"/compatdata/\d+/pfx/", norm(f)) for f in paths):
+            return None, [], "registry-only saves, cannot sync"
+        return None, [], "not in a Proton prefix (native Linux?)"
+
+    def newest(fs):
+        return max((os.path.getmtime(f) for f in fs if os.path.exists(f)), default=0)
+
+    (appid, pfx), files = max(groups.items(), key=lambda kv: newest(kv[1]))
+    if len(groups) > 1:
+        others = ", ".join(shortcuts[a].name for a, _ in groups if a != appid)
+        print(f"  note: saves found in several prefixes; using the newest ({shortcuts[appid].name}), not {others}")
+    return prefix_env(pfx), files, None
 
 
 def steam_reason(files, manifest_entry, libs, installed) -> str | None:
@@ -434,9 +628,10 @@ class Syncthing:
             self._is_windows = self.request("GET", "/rest/system/version").get("os") == "windows"
         return self._is_windows
 
-    def put_folder(self, fid, label, path, device_ids, versioning=None, ignores=()):
+    def put_folder(self, fid, label, path, device_ids, versioning=None, ignores=(), ignore_case=False):
         """Create/replace a folder. With ignores, it is created paused, the ignore patterns
-        are written, and only then is it resumed, so ignored files are never announced."""
+        are written, and only then is it resumed, so ignored files are never announced.
+        ignore_case makes the patterns case-insensitive (for Proton prefixes)."""
         obj = self.request("GET", "/rest/config/defaults/folder") or {}
         obj.update({"id": fid, "label": label, "path": path, "type": "sendreceive",
                     "paused": bool(ignores),
@@ -447,7 +642,7 @@ class Syncthing:
         self.request("PUT", f"/rest/config/folders/{urllib.parse.quote(fid)}", obj)
         if ignores:
             win = self.is_windows()
-            self.set_ignores(fid, [ignore_line(r, win) for r in ignores])
+            self.set_ignores(fid, [("(?i)" if ignore_case else "") + ignore_line(r, win) for r in ignores])
             self.request("PATCH", f"/rest/config/folders/{urllib.parse.quote(fid)}", {"paused": False})
 
     def set_ignores(self, fid, lines):
@@ -506,7 +701,12 @@ def syncthing_config_candidates(st_home=None) -> list[Path]:
         return [Path(base, "Syncthing", "config.xml")]
     state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
     conf = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    return [Path(state, "syncthing", "config.xml"), Path(conf, "syncthing", "config.xml")]
+    out = [Path(state, "syncthing", "config.xml"), Path(conf, "syncthing", "config.xml")]
+    # Flatpak builds (e.g. SyncThingy on the Steam Deck) keep theirs in the app's sandbox dir
+    flatpak = Path(os.path.expanduser("~/.var/app"))
+    out += sorted(flatpak.glob("*/.local/state/syncthing/config.xml"))
+    out += sorted(flatpak.glob("*/config/syncthing/config.xml"))
+    return out
 
 
 def local_syncthing(st_home=None) -> Syncthing:
@@ -540,6 +740,8 @@ def load_config(cfg_dir: Path) -> dict:
     p = cfg_dir / "config.json"
     if p.is_file():
         cfg.update(json.loads(p.read_text(encoding="utf-8")))
+    if cfg.get("exclude_device_patterns") == ["deck"]:  # old default, from before Steam Deck support
+        cfg["exclude_device_patterns"] = []
     return cfg
 
 
@@ -636,6 +838,18 @@ def ask_selection(prompt, n, empty_means_all=False) -> list[int]:
             print(f"  {e}")
 
 
+def ask_required(prompt) -> str:
+    """Ask until something is entered; end of input (or Ctrl+D) cancels."""
+    while True:
+        try:
+            text = input(prompt).strip()
+        except EOFError:
+            raise GSError("Cancelled; nothing was entered")
+        if text:
+            return text
+        print("  This is required.")
+
+
 def confirm(prompt, default=True) -> bool:
     text = ask(prompt + (" [Y/n] " if default else " [y/N] ")).lower()
     return default if not text else text in ("y", "yes")
@@ -699,10 +913,12 @@ def cmd_init(args):
     if args.nas_root:
         cfg["nas_folder_root"] = args.nas_root
     if not cfg["nas_url"]:
-        cfg["nas_url"] = ask("NAS Syncthing URL (e.g. http://10.0.0.5:8384): ")
+        cfg["nas_url"] = ask_required("NAS Syncthing URL (e.g. http://10.0.0.5:8384): ")
     if not cfg["nas_api_key"]:
-        cfg["nas_api_key"] = ask("NAS Syncthing API key: ")
+        cfg["nas_api_key"] = ask_required("NAS Syncthing API key: ")
     cfg["nas_url"] = cfg["nas_url"].rstrip("/")
+    if not re.match(r"^https?://", cfg["nas_url"], re.IGNORECASE):
+        cfg["nas_url"] = "http://" + cfg["nas_url"]
     save_config(cfg_dir, cfg)
     print(f"Config saved: {cfg_dir / 'config.json'}")
 
@@ -739,12 +955,23 @@ def cmd_init(args):
 
 # ---------------------------------------------------------------- share
 
+def ludusavi_cmd(cfg) -> list[str]:
+    """The command that runs Ludusavi: config "ludusavi" (a path or an argument list),
+    falling back to the Flatpak build on Linux when it is not on PATH."""
+    exe = cfg.get("ludusavi") or "ludusavi"
+    if isinstance(exe, list):
+        return exe
+    if exe == "ludusavi" and not IS_WINDOWS and not shutil.which(exe) and shutil.which("flatpak"):
+        return ["flatpak", "run", LUDUSAVI_FLATPAK]
+    return [exe]
+
+
 def ludusavi_json(ctx, *args):
-    exe = ctx.cfg.get("ludusavi") or "ludusavi"
+    cmd = ludusavi_cmd(ctx.cfg)
     try:
-        r = subprocess.run([exe, *args], capture_output=True)
+        r = subprocess.run([*cmd, *args], capture_output=True)
     except FileNotFoundError:
-        raise GSError(f"Cannot find ludusavi ({exe}); install it or put its full path in config.json")
+        raise GSError(f"Cannot find ludusavi ({' '.join(cmd)}); install it or put its full path in config.json")
     if r.returncode != 0 and not r.stdout.strip():
         raise GSError(f"ludusavi {' '.join(args)} failed: {r.stderr.decode(errors='replace').strip()}")
     return json.loads(r.stdout.decode("utf-8"))
@@ -759,6 +986,7 @@ class GameRow:
     ignored: bool
     shared: list  # existing registry entries
     selectable: bool
+    env: Env | None = None  # Proton prefix the saves are in (Linux); None = this device's home
 
 
 def choose_devices(ctx, spec=None) -> list[str]:
@@ -801,7 +1029,7 @@ def allocate_id(ctx, game, taken) -> str:
     return fid
 
 
-def create_share(ctx, reg_dir, game, root, fid, targets, ignores=()):
+def create_share(ctx, reg_dir, game, root, fid, targets, ignores=(), env=None):
     label = LABEL_PREFIX + game
     ignores = list(ignores)
     nas_known = {d["deviceID"] for d in ctx.nas.devices()}
@@ -817,7 +1045,8 @@ def create_share(ctx, reg_dir, game, root, fid, targets, ignores=()):
                       "cleanupIntervalS": 3600}
     try:
         ctx.nas.put_folder(fid, label, nas_path, [ctx.nas_id, ctx.my_id, *targets], versioning, ignores)
-        ctx.local.put_folder(fid, label, root, [ctx.my_id, ctx.nas_id, *targets], ignores=ignores)
+        ctx.local.put_folder(fid, label, root, [ctx.my_id, ctx.nas_id, *targets], ignores=ignores,
+                             ignore_case=bool(env and env.drive_c))
     except GSError:
         ctx.local.delete_folder(fid)
         ctx.nas.delete_folder(fid)
@@ -826,7 +1055,7 @@ def create_share(ctx, reg_dir, game, root, fid, targets, ignores=()):
         "game": game,
         "folder_id": fid,
         "label": label,
-        "portable_path": to_portable(root, ctx.home),
+        "portable_path": to_portable(root, env or ctx.home),
         "ignore": ignores,
         "devices": [ctx.my_id, *targets],
         "created_by": ctx.my_id,
@@ -871,14 +1100,53 @@ def nesting_conflict(root, local_folders) -> str | None:
     return None
 
 
+def ludusavi_config_dirs(cmd) -> list[Path]:
+    conf = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    out = [Path(conf, "ludusavi")]
+    if LUDUSAVI_FLATPAK in cmd:
+        out.insert(0, Path(os.path.expanduser(f"~/.var/app/{LUDUSAVI_FLATPAK}/config/ludusavi")))
+    return out
+
+
+def prefix_scan_config(ctx, lconf, prefixes) -> Path:
+    """A Ludusavi config dir = the user's config plus every prefix as an "otherWine" root, so
+    Ludusavi finds saves in a shortcut's prefix whatever the shortcut is called. It lives in
+    gamesync's config dir (Flatpak apps can't see this process's /tmp); the manifest is
+    linked from the user's Ludusavi config so it isn't downloaded again."""
+    d = ctx.cfg_dir / "ludusavi-scan"
+    d.mkdir(parents=True, exist_ok=True)
+    conf = dict(lconf)
+    have = {pkey(r.get("path") or "") for r in conf.get("roots") or []}
+    conf["roots"] = list(conf.get("roots") or []) + [
+        {"store": "otherWine", "path": p} for p in prefixes if pkey(p) not in have]
+    (d / "config.yaml").write_text(json.dumps(conf, ensure_ascii=False, indent=2), encoding="utf-8")  # JSON is YAML
+    link = d / "manifest.yaml"
+    if not link.exists():
+        for src in ludusavi_config_dirs(ludusavi_cmd(ctx.cfg)):
+            if (src / "manifest.yaml").is_file():
+                try:
+                    link.unlink(missing_ok=True)
+                    link.symlink_to(src / "manifest.yaml")
+                except OSError:
+                    pass
+                break
+    return d
+
+
 def scan_games(ctx, registry, local_ids):
     print("Scanning saves with Ludusavi, this can take a minute or two...", flush=True)
-    preview = ludusavi_json(ctx, "backup", "--preview", "--api")
-    manifest = ludusavi_json(ctx, "manifest", "show", "--api")
     lconf = ludusavi_json(ctx, "config", "show", "--api")
     libs = steam_libraries()
     installed = installed_steam_ids(libs)
     skip_dirs = libs + [norm(r["path"]) for r in lconf.get("roots", []) if r.get("path")]
+    shortcuts = {} if IS_WINDOWS else steam_shortcuts()
+    prefixes = [p for p in (find_prefix(a, libs) for a in shortcuts) if p]
+    if prefixes:
+        scan_dir = prefix_scan_config(ctx, lconf, prefixes)
+        preview = ludusavi_json(ctx, "--config", str(scan_dir), "backup", "--preview", "--api")
+    else:
+        preview = ludusavi_json(ctx, "backup", "--preview", "--api")
+    manifest = ludusavi_json(ctx, "manifest", "show", "--api")
 
     by_game = {}
     for e in registry.values():
@@ -890,12 +1158,17 @@ def scan_games(ctx, registry, local_ids):
         files = g.get("files") or {}
         paths = list(files)
         entry = manifest.get(name) or {}
+        env = None
         if not paths:
             reason = "registry-only saves, cannot sync" if g.get("registry") else "no save files"
-        else:
+        elif IS_WINDOWS:
             reason = steam_reason(paths, entry, libs, installed)
+        else:  # only Windows games run through Proton as non-Steam shortcuts are supported
+            env, paths, reason = pick_proton_files(paths, libs, shortcuts)
+            if reason is None and steam_ids_of(entry) & installed:
+                reason = "installed in Steam"
         rows.append(GameRow(name, paths, sum(v.get("bytes", 0) for v in files.values()), reason,
-                            g.get("decision") == "Ignored", by_game.get(name, []), bool(paths)))
+                            g.get("decision") == "Ignored", by_game.get(name, []), bool(paths), env))
     return rows, manifest, skip_dirs
 
 
@@ -906,10 +1179,13 @@ def tilde(path, home) -> str:
 def plan_game(ctx, row, manifest, skip_dirs, include_config):
     """Returns (roots, ignores_by_root, skipped, problems, settings_files) for one game."""
     entry = manifest.get(row.name) or {}
-    saves, configs = classify_files(row.files, entry, ctx.home)
+    env = row.env or ctx.home
+    if row.env and row.env.drive_c:  # the prefix sits inside a Steam library; don't skip it
+        skip_dirs = [d for d in skip_dirs if not is_under(row.env.drive_c, d)]
+    saves, configs = classify_files(row.files, entry, env)
     configs = [c for c in configs if not any(is_under(c, d) for d in skip_dirs)]
     roots, skipped, problems = compute_roots(row.files if include_config else saves,
-                                             list(entry.get("files", {})), ctx.home, skip_dirs)
+                                             list(entry.get("files", {})), env, skip_dirs)
     ignores = {r: [] if include_config else config_ignores(r, saves, configs) for r in roots}
     return roots, ignores, skipped, problems, configs
 
@@ -1032,12 +1308,93 @@ def cmd_share(args):
         if not args.yes and not confirm("  Create?"):
             continue
         for root in ok_roots:
-            create_share(ctx, reg_dir, r.name, root, allocate_id(ctx, r.name, taken), targets, ignores[root])
+            create_share(ctx, reg_dir, r.name, root, allocate_id(ctx, r.name, taken), targets, ignores[root],
+                         r.env)
             local_folders.append({"id": "?", "path": root})
     print("\nDone. Run `gamesync accept` on the other devices to receive.")
 
 
 # ---------------------------------------------------------------- accept
+
+def resolve_ci(path) -> str:
+    """Match each existing component case-insensitively, as Wine does for the game;
+    components that do not exist yet are kept as given."""
+    parts = norm(path).split("/")
+    out = [parts[0]]
+    for i in range(1, len(parts)):
+        base = "/".join(out) or "/"
+        comp = parts[i]
+        if not os.path.exists(os.path.join(base, comp)):
+            try:
+                hits = sorted(n for n in os.listdir(base) if n.casefold() == comp.casefold())
+            except OSError:
+                hits = []
+            if not hits:
+                return "/".join(out + parts[i:])
+            comp = hits[0]
+        out.append(comp)
+    return "/".join(out)
+
+
+def match_shortcut(entry, shortcuts, libs, install_dirs=list) -> int | None:
+    """App ID of the shortcut that most likely runs this game, or None if unsure. Tried in
+    order: the game's name as the shortcut name / exe name / a folder on its path; a prefix
+    that already has this save dir; the game's install folder names (from Ludusavi's
+    manifest, fetched only if needed via the install_dirs callable) on the shortcut's path."""
+    def unique(ids):
+        return ids[0] if len(ids) == 1 else None
+
+    game = title_key(entry["game"])
+    hit = unique([a for a, sc in shortcuts.items() if game in sc.keys()])
+    if hit is None:
+        have = []
+        for a in shortcuts:
+            pfx = find_prefix(a, libs)
+            path = pfx and from_portable(entry["portable_path"], prefix_env(pfx))
+            if path and os.path.isdir(resolve_ci(path)):
+                have.append(a)
+        hit = unique(have)
+    if hit is None:
+        dirs = {title_key(d) for d in install_dirs()} - {""}
+        hit = unique([a for a, sc in shortcuts.items() if dirs & sc.keys()])
+    return hit
+
+
+def choose_prefix(ctx, entry, shortcuts, libs, yes, install_dirs=list) -> Env | None:
+    """Env of the Proton prefix of the non-Steam shortcut that runs this game. The choice
+    is remembered in config.json ("prefix_map")."""
+    game = entry["game"]
+    pmap = ctx.cfg.setdefault("prefix_map", {})
+    appid = pmap.get(game)
+    if appid is None:
+        appid = match_shortcut(entry, shortcuts, libs, install_dirs)
+        if appid is not None:
+            print(f"  {game}: using Steam shortcut \"{shortcuts[appid].name}\"")
+        elif not shortcuts:
+            print(f"  ! Skipping {game}: no non-Steam games in Steam; add the game to Steam first")
+            return None
+        elif yes:
+            print(f"  ! Skipping {game}: no Steam shortcut named like it; run accept without --yes to pick one")
+            return None
+        else:
+            items = sorted(shortcuts.items(), key=lambda kv: kv[1].name.casefold())
+            print(f"  Which non-Steam game in Steam is {game}?")
+            for i, (a, sc) in enumerate(items, 1):
+                print(f"    {i}. {sc.name}  ({sc.exe.strip(chr(34))})")
+            idx = ask_selection("  Number (Enter = skip): ", len(items))
+            if not idx:
+                print(f"  Skipped {game}.")
+                return None
+            appid = items[idx[0]][0]
+        pmap[game] = appid
+        save_config(ctx.cfg_dir, ctx.cfg)
+    pfx = find_prefix(appid, libs)
+    if not pfx:
+        print(f"  ! Skipping {game}: its Proton prefix does not exist yet; "
+              f"start the game once from Steam, then run accept again")
+        return None
+    return prefix_env(pfx)
+
 
 def cmd_accept(args):
     ctx = make_ctx(args)
@@ -1064,18 +1421,45 @@ def cmd_accept(args):
 
     print("Save shares offered to this device:")
     for i, e in enumerate(todo, 1):
-        path = from_portable(e["portable_path"], ctx.home)
-        note = ""
-        if os.path.isdir(path) and any(Path(path).iterdir()):
-            note = "  [local files exist; Syncthing will merge]"
+        if IS_WINDOWS:
+            path = from_portable(e["portable_path"], ctx.home)
+            note = ""
+            if os.path.isdir(path) and any(Path(path).iterdir()):
+                note = "  [local files exist; Syncthing will merge]"
+        else:  # the Proton prefix is picked per game below
+            path, note = e["portable_path"], ""
         print(f"  {i}. {e['game']}  <-  {e.get('created_by_name', '?')}\n       {path}{note}")
     idx = list(range(len(todo))) if args.yes else \
         ask_selection("Accept which? (numbers; Enter = all; q = cancel): ", len(todo), empty_means_all=True)
 
+    libs = [] if IS_WINDOWS else steam_libraries()
+    shortcuts = {} if IS_WINDOWS else steam_shortcuts()
+    manifest = None
+
+    def install_dirs(ctx, game):  # Ludusavi is optional on receiving devices
+        nonlocal manifest
+        if manifest is None:
+            try:
+                manifest = ludusavi_json(ctx, "manifest", "show", "--api")
+            except (GSError, ValueError):
+                manifest = {}
+        return list((manifest.get(game) or {}).get("installDir") or {})
+
     for i in idx:
         e = todo[i]
         fid = e["folder_id"]
-        path = from_portable(e["portable_path"], ctx.home)
+        env = None
+        if IS_WINDOWS:
+            path = from_portable(e["portable_path"], ctx.home)
+        else:
+            env = choose_prefix(ctx, e, shortcuts, libs, args.yes, lambda: install_dirs(ctx, e["game"]))
+            if env is None:
+                continue
+            path = from_portable(e["portable_path"], env)
+            if path is None:
+                print(f"  ! Skipping {e['game']}: {e['portable_path']} is not on C: and cannot be mapped into Proton")
+                continue
+            path = resolve_ci(path)
         conflict = nesting_conflict(path, local_folders)
         if conflict:
             print(f"  ! Skipping {e['game']}: {path} overlaps existing share {conflict}")
@@ -1090,7 +1474,7 @@ def cmd_accept(args):
         peers = [d for d in e.get("devices", []) if d in known and d != ctx.my_id]
         ignores = e.get("ignore") or []
         ctx.local.put_folder(fid, e.get("label") or LABEL_PREFIX + e["game"], path,
-                             [ctx.my_id, ctx.nas_id, *peers], ignores=ignores)
+                             [ctx.my_id, ctx.nas_id, *peers], ignores=ignores, ignore_case=env is not None)
         ctx.local.dismiss_pending(fid)
         local_folders.append({"id": fid, "path": path})
         print(f"  OK {e['game']}  ->  {path}")
