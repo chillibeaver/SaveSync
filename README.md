@@ -1,8 +1,8 @@
 # Savething
 
-Sync PC game saves across your gaming devices. [中文](README_ch.md)
+Say goodbye to manually copy-pasting save locations into Syncthing on every device. [中文](README_ch.md)
 
-Savething uses [Ludusavi](https://github.com/mtkennerly/ludusavi) to find each game's save folder and [Syncthing](https://syncthing.net) to sync it. An always-on server relays the saves, so your devices don't need to be on at the same time.
+Savething uses [Ludusavi](https://github.com/mtkennerly/ludusavi) to find each game's save folder and [Syncthing](https://syncthing.net) to sync it, across Windows and SteamOS. An always-on server relays the saves, so your devices don't need to be on at the same time.
 
 Share a game once on one device, accept it once on the others, and Syncthing handles the rest.
 

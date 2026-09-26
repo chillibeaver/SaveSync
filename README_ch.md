@@ -1,8 +1,8 @@
 # Savething
 
-在多台游戏设备之间同步 PC 游戏存档。[English](README.md)
+告别在每台设备上手动往 Syncthing 里复制粘贴存档路径。[English](README.md)
 
-Savething 用 [Ludusavi](https://github.com/mtkennerly/ludusavi) 找到每个游戏的存档目录，用 [Syncthing](https://syncthing.net) 同步。一台常开的服务器负责中转，所以各台设备不需要同时开机。
+Savething 用 [Ludusavi](https://github.com/mtkennerly/ludusavi) 找到每个游戏的存档目录，用 [Syncthing](https://syncthing.net) 在 Windows 和 SteamOS 之间同步。一台常开的服务器负责中转，所以各台设备不需要同时开机。
 
 每个游戏只需在一台设备上 share 一次，在其他设备上 accept 一次，之后交给 Syncthing。
 
