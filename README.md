@@ -1,6 +1,6 @@
 # SaveSync
 
-Sync PC game saves across your Windows gaming devices.
+Sync PC game saves across your gaming devices.
 
 SaveSync uses [Ludusavi](https://github.com/mtkennerly/ludusavi) to find each game's save folder and [Syncthing](https://syncthing.net) to sync it. An always-on server relays the saves, so your devices don't need to be on at the same time. Steam games are skipped, since Steam Cloud already covers them.
 
@@ -11,7 +11,7 @@ Share a game once on one device, accept it once on the others, and Syncthing han
 ## Requirements
 
 - **An always-on server** running Syncthing: a NAS, home server, Raspberry Pi, or any PC that stays on. Any OS.
-- **Windows gaming devices** with Syncthing installed. Linux devices are not yet supported.
+- **Windows gaming devices** and/or a **Steam Deck** with Syncthing installed. See [Steam Deck](#steam-deck) for what is supported there.
 - **Ludusavi** on devices that share games. Devices that only receive saves don't need it.
 - **Python 3.11+** only if you use `gamesync.py` instead of `gamesync.exe`. No extra packages needed.
 
@@ -37,7 +37,7 @@ In Syncthing, add every gaming device and the server to each other, and add the 
 
 Then, on the server, edit each gaming device → **Sharing** tab → uncheck **Auto Accept**. Otherwise, unshared games can come back on their own.
 
-Devices are shown by their Syncthing name, so give them clear names. Devices with `deck` in the name are hidden.
+Devices are shown by their Syncthing name, so give them clear names. To hide devices, add name patterns to `exclude_device_patterns` in `config.json`.
 
 ### 3. Initialize each gaming device
 
@@ -90,6 +90,17 @@ Double-click `gamesync.exe` to open the menu, or run the commands directly:
 - **Unshare** keeps all save files. Other devices stop syncing the next time they run `accept`.
 - **Don't delete the `gamesync-registry` folder.** `accept` needs it to know where each game's saves go.
 
+## Steam Deck
+
+Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. Run it in Desktop Mode with `python3 gamesync.py` (SteamOS ships Python 3).
+
+- **Install** Ludusavi and SyncThingy (Syncthing) from Discover. Both are Flatpaks and are found automatically.
+- **Shortcut names don't matter.** `share` has Ludusavi scan every non-Steam shortcut's Proton prefix (`~/.local/share/Steam/steamapps/compatdata/<appid>/pfx`) and recognize games by their save paths. It uses a separate Ludusavi config in gamesync's config dir (`ludusavi-scan`); your own Ludusavi config is not changed.
+- **Start the game once** before `accept`, so Proton creates its prefix.
+- **Paths:** the prefix's `drive_c/users/steamuser` stands in for `C:\Users\<you>`, and `C:/` for `drive_c/`. Saves on other drives (D:, ...) can't be mapped and are skipped.
+- **accept** finds the game's shortcut automatically: by the game's name as the shortcut name, exe name or a folder on the exe path; then by a prefix that already has the save folder; then by the game's install folder names from Ludusavi's manifest. Only if all fail does it ask. The answer is kept in `config.json` (`prefix_map`).
+- The prefix's `*.reg` registry files are never synced.
+
 ---
 
 ## Troubleshooting
@@ -104,7 +115,7 @@ Open `http://<server IP>:8384` in a browser on this device. If it doesn't load, 
 The device and the server aren't paired in Syncthing.
 
 **A device is missing from the list in `share`**
-It isn't added in this device's Syncthing, or its name contains `deck`.
+It isn't added in this device's Syncthing, or its name matches `exclude_device_patterns`.
 
 **"Cannot find ludusavi"**
 Set the full path in the `"ludusavi"` entry of `%APPDATA%\gamesync\config.json`, e.g. `"C:\\Tools\\ludusavi.exe"`.
