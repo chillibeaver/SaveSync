@@ -1,9 +1,9 @@
-"""gamesync - find game saves with Ludusavi, sync them between devices with Syncthing,
-using an always-on NAS as the hub.
+"""Savething - find game saves with Ludusavi, sync them between devices with Syncthing,
+using an always-on server as the hub.
 
 Commands:
-  init    run once per device: write config, set up the registry share (gamesync-registry)
-  share   scan saves, pick games and devices, create shares on this device and the NAS
+  init    run once per device: write config, set up the registry share (savething-registry)
+  share   scan saves, pick games and devices, create shares on this device and the server
   accept  accept save shares offered to this device, translating paths to this machine
           (also stops syncing shares that were unshared on another device)
   unshare stop syncing a save everywhere (files are kept)
@@ -33,25 +33,25 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-REGISTRY_ID = "gamesync-registry"
-REGISTRY_LABEL = "gamesync registry"
-FOLDER_PREFIX = "gs-"
-LABEL_PREFIX = "Save - "
+REGISTRY_ID = "savething-registry"
+REGISTRY_LABEL = "Savething registry"
+FOLDER_PREFIX = "save-"
+LABEL_PREFIX = "Savething - "
 IS_WINDOWS = os.name == "nt"
 GLOB_CHARS = set("*?[")
 LUDUSAVI_FLATPAK = "com.github.mtkennerly.ludusavi"
 PROTON_USER = "steamuser"
 DEFAULT_CONFIG = {
-    "nas_url": "",
-    "nas_api_key": "",
-    "nas_folder_root": "/srv/media/game/sync",
-    "nas_versioning_keep": 10,
+    "server_url": "",
+    "server_key": "",
+    "server_root": "/srv/media/game/savething",
+    "server_versioning_keep": 10,
     "exclude_device_patterns": [],
     "ludusavi": "ludusavi",
 }
 
 
-class GSError(Exception):
+class SavethingError(Exception):
     pass
 
 
@@ -91,7 +91,7 @@ def parent_of(p) -> str:
 
 
 def home_dir() -> str:
-    return norm(os.environ.get("GAMESYNC_HOME") or Path.home())
+    return norm(os.environ.get("SAVETHING_HOME") or Path.home())
 
 
 @dataclass(frozen=True)
@@ -601,9 +601,9 @@ class Syncthing:
             if ok404 and e.code == 404:
                 return None
             detail = e.read().decode(errors="replace").strip()
-            raise GSError(f"{self.name} Syncthing returned HTTP {e.code} ({method} {path}): {detail}")
+            raise SavethingError(f"{self.name} Syncthing returned HTTP {e.code} ({method} {path}): {detail}")
         except (urllib.error.URLError, socket.timeout, ConnectionError) as e:
-            raise GSError(f"Cannot reach {self.name} Syncthing ({self.url}): {e}")
+            raise SavethingError(f"Cannot reach {self.name} Syncthing ({self.url}): {e}")
         if not raw:
             return None
         try:
@@ -654,7 +654,7 @@ class Syncthing:
     def set_folder_devices(self, fid, device_ids):
         f = self.folder(fid)
         if f is None:
-            raise GSError(f"Folder {fid} does not exist on {self.name}")
+            raise SavethingError(f"Folder {fid} does not exist on {self.name}")
         existing = {d["deviceID"]: d for d in f.get("devices", [])}
         for d in device_ids:
             existing.setdefault(d, {"deviceID": d, "introducedBy": "", "encryptionPassword": ""})
@@ -686,7 +686,7 @@ class Syncthing:
     def dismiss_pending(self, fid):
         try:
             self.request("DELETE", "/rest/cluster/pending/folders", query={"folder": fid})
-        except GSError:
+        except SavethingError:
             pass
 
     def pending_folders(self):
@@ -722,17 +722,17 @@ def local_syncthing(st_home=None) -> Syncthing:
                 host = "[::1]"
             scheme = "https" if gui.get("tls", "false").lower() == "true" else "http"
             if not key:
-                raise GSError(f"No API key in {p}; generate one in the Syncthing web UI (Settings > GUI)")
+                raise SavethingError(f"No API key in {p}; generate one in the Syncthing web UI (Settings > GUI)")
             return Syncthing(f"{scheme}://{host}:{port}", key, "local")
-    raise GSError("Cannot find the local Syncthing config.xml. Is Syncthing installed?")
+    raise SavethingError("Cannot find the local Syncthing config.xml. Is Syncthing installed?")
 
 
 # ---------------------------------------------------------------- config / registry
 
 def default_config_dir() -> Path:
     if IS_WINDOWS:
-        return Path(os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "gamesync")
-    return Path(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "gamesync")
+        return Path(os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "savething")
+    return Path(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "savething")
 
 
 def load_config(cfg_dir: Path) -> dict:
@@ -740,8 +740,6 @@ def load_config(cfg_dir: Path) -> dict:
     p = cfg_dir / "config.json"
     if p.is_file():
         cfg.update(json.loads(p.read_text(encoding="utf-8")))
-    if cfg.get("exclude_device_patterns") == ["deck"]:  # old default, from before Steam Deck support
-        cfg["exclude_device_patterns"] = []
     return cfg
 
 
@@ -844,7 +842,7 @@ def ask_required(prompt) -> str:
         try:
             text = input(prompt).strip()
         except EOFError:
-            raise GSError("Cancelled; nothing was entered")
+            raise SavethingError("Cancelled; nothing was entered")
         if text:
             return text
         print("  This is required.")
@@ -862,9 +860,9 @@ class Ctx:
     cfg_dir: Path
     cfg: dict
     local: Syncthing
-    nas: Syncthing
+    server: Syncthing
     my_id: str
-    nas_id: str
+    server_id: str
     home: str
     device_names: dict = field(default_factory=dict)
 
@@ -877,23 +875,23 @@ class Ctx:
     def registry_dir(self) -> Path:
         f = self.local.folder(REGISTRY_ID)
         if not f:
-            raise GSError("This device is not initialized. Run: gamesync init")
+            raise SavethingError("This device is not initialized. Run: savething init")
         return Path(f["path"])
 
 
 def make_ctx(args, cfg=None) -> Ctx:
     cfg_dir = Path(args.config_dir) if args.config_dir else default_config_dir()
     cfg = cfg or load_config(cfg_dir)
-    if not cfg.get("nas_url") or not cfg.get("nas_api_key"):
-        raise GSError("NAS is not configured. Run: gamesync init")
+    if not cfg.get("server_url") or not cfg.get("server_key"):
+        raise SavethingError("Server is not configured. Run: savething init")
     local = local_syncthing(args.st_home)
-    nas = Syncthing(cfg["nas_url"], cfg["nas_api_key"], "NAS")
-    my_id, nas_id = local.my_id(), nas.my_id()
-    if my_id == nas_id:
-        raise GSError("This device is the NAS; run gamesync on the PC or handheld")
-    names = {d["deviceID"]: d.get("name") or d["deviceID"][:7] for d in nas.devices()}
+    server = Syncthing(cfg["server_url"], cfg["server_key"], "server")
+    my_id, server_id = local.my_id(), server.my_id()
+    if my_id == server_id:
+        raise SavethingError("This device is the server; run Savething on a gaming device")
+    names = {d["deviceID"]: d.get("name") or d["deviceID"][:7] for d in server.devices()}
     names.update({d["deviceID"]: d.get("name") or d["deviceID"][:7] for d in local.devices()})
-    return Ctx(cfg_dir, cfg, local, nas, my_id, nas_id, home_dir(), names)
+    return Ctx(cfg_dir, cfg, local, server, my_id, server_id, home_dir(), names)
 
 
 # ---------------------------------------------------------------- init
@@ -902,52 +900,52 @@ def cmd_init(args):
     cfg_dir = Path(args.config_dir) if args.config_dir else default_config_dir()
     first_time = not (cfg_dir / "config.json").is_file()
     cfg = load_config(cfg_dir)
-    if first_time and not (args.nas_url or args.nas_root):  # fully interactive first setup
-        root = ask(f"Save directory on the NAS [{cfg['nas_folder_root']}]: ")
+    if first_time and not (args.server_url or args.server_root):  # fully interactive first setup
+        root = ask(f"Save directory on the server [{cfg['server_root']}]: ")
         if root:
-            cfg["nas_folder_root"] = root
-    if args.nas_url:
-        cfg["nas_url"] = args.nas_url
-    if args.nas_key:
-        cfg["nas_api_key"] = args.nas_key
-    if args.nas_root:
-        cfg["nas_folder_root"] = args.nas_root
-    if not cfg["nas_url"]:
-        cfg["nas_url"] = ask_required("NAS Syncthing URL (e.g. http://10.0.0.5:8384): ")
-    if not cfg["nas_api_key"]:
-        cfg["nas_api_key"] = ask_required("NAS Syncthing API key: ")
-    cfg["nas_url"] = cfg["nas_url"].rstrip("/")
-    if not re.match(r"^https?://", cfg["nas_url"], re.IGNORECASE):
-        cfg["nas_url"] = "http://" + cfg["nas_url"]
+            cfg["server_root"] = root
+    if args.server_url:
+        cfg["server_url"] = args.server_url
+    if args.server_key:
+        cfg["server_key"] = args.server_key
+    if args.server_root:
+        cfg["server_root"] = args.server_root
+    if not cfg["server_url"]:
+        cfg["server_url"] = ask_required("Server Syncthing URL (e.g. http://192.168.1.10:8384): ")
+    if not cfg["server_key"]:
+        cfg["server_key"] = ask_required("Server Syncthing API key: ")
+    cfg["server_url"] = cfg["server_url"].rstrip("/")
+    if not re.match(r"^https?://", cfg["server_url"], re.IGNORECASE):
+        cfg["server_url"] = "http://" + cfg["server_url"]
     save_config(cfg_dir, cfg)
     print(f"Config saved: {cfg_dir / 'config.json'}")
 
     ctx = make_ctx(args, cfg)
-    nas_known = {d["deviceID"] for d in ctx.nas.devices()}
+    server_known = {d["deviceID"] for d in ctx.server.devices()}
     local_known = {d["deviceID"] for d in ctx.local.devices()}
-    print(f"This device: {ctx.dev_name(ctx.my_id)} ({ctx.my_id[:7]})  NAS: {ctx.dev_name(ctx.nas_id)} ({ctx.nas_id[:7]})")
-    if ctx.my_id not in nas_known:
-        raise GSError("The NAS Syncthing does not know this device yet; add this device on the NAS first")
-    if ctx.nas_id not in local_known:
-        raise GSError("The local Syncthing has not added the NAS device yet; add it first")
+    print(f"This device: {ctx.dev_name(ctx.my_id)} ({ctx.my_id[:7]})  Server: {ctx.dev_name(ctx.server_id)} ({ctx.server_id[:7]})")
+    if ctx.my_id not in server_known:
+        raise SavethingError("The server Syncthing does not know this device yet; add this device on the server first")
+    if ctx.server_id not in local_known:
+        raise SavethingError("The local Syncthing has not added the server device yet; add it first")
 
-    nas_path = cfg["nas_folder_root"].rstrip("/") + "/" + REGISTRY_ID
-    f = ctx.nas.folder(REGISTRY_ID)
+    server_path = cfg["server_root"].rstrip("/") + "/" + REGISTRY_ID
+    f = ctx.server.folder(REGISTRY_ID)
     if f is None:
-        ctx.nas.put_folder(REGISTRY_ID, REGISTRY_LABEL, nas_path, [ctx.nas_id, ctx.my_id])
-        print("Created the registry share on the NAS")
+        ctx.server.put_folder(REGISTRY_ID, REGISTRY_LABEL, server_path, [ctx.server_id, ctx.my_id])
+        print("Created the registry share on the server")
     elif ctx.my_id not in {d["deviceID"] for d in f["devices"]}:
-        ctx.nas.set_folder_devices(REGISTRY_ID, [ctx.my_id])
-        print("Added this device to the registry share on the NAS")
+        ctx.server.set_folder_devices(REGISTRY_ID, [ctx.my_id])
+        print("Added this device to the registry share on the server")
 
     f = ctx.local.folder(REGISTRY_ID)
     if f is None:
         reg_dir = cfg_dir / "registry"
         reg_dir.mkdir(parents=True, exist_ok=True)
-        ctx.local.put_folder(REGISTRY_ID, REGISTRY_LABEL, str(reg_dir), [ctx.my_id, ctx.nas_id])
+        ctx.local.put_folder(REGISTRY_ID, REGISTRY_LABEL, str(reg_dir), [ctx.my_id, ctx.server_id])
         print(f"Created the local registry share: {reg_dir}")
     else:
-        ctx.local.set_folder_devices(REGISTRY_ID, [ctx.nas_id])
+        ctx.local.set_folder_devices(REGISTRY_ID, [ctx.server_id])
         print(f"Local registry share already exists: {f['path']}")
     ctx.local.dismiss_pending(REGISTRY_ID)
     print("Init complete.")
@@ -971,9 +969,9 @@ def ludusavi_json(ctx, *args):
     try:
         r = subprocess.run([*cmd, *args], capture_output=True)
     except FileNotFoundError:
-        raise GSError(f"Cannot find ludusavi ({' '.join(cmd)}); install it or put its full path in config.json")
+        raise SavethingError(f"Cannot find ludusavi ({' '.join(cmd)}); install it or put its full path in config.json")
     if r.returncode != 0 and not r.stdout.strip():
-        raise GSError(f"ludusavi {' '.join(args)} failed: {r.stderr.decode(errors='replace').strip()}")
+        raise SavethingError(f"ludusavi {' '.join(args)} failed: {r.stderr.decode(errors='replace').strip()}")
     return json.loads(r.stdout.decode("utf-8"))
 
 
@@ -991,7 +989,7 @@ class GameRow:
 
 def choose_devices(ctx, spec=None) -> list[str]:
     cands = [d for d in ctx.local.devices()
-             if d["deviceID"] not in (ctx.my_id, ctx.nas_id) and not ctx.excluded_device(d.get("name"))]
+             if d["deviceID"] not in (ctx.my_id, ctx.server_id) and not ctx.excluded_device(d.get("name"))]
     if spec is not None:
         wanted = [s.strip().lower() for s in spec.split(",") if s.strip()]
         out = []
@@ -999,17 +997,17 @@ def choose_devices(ctx, spec=None) -> list[str]:
             hit = [d["deviceID"] for d in cands
                    if (d.get("name") or "").lower() == w or d["deviceID"].lower().startswith(w)]
             if not hit:
-                raise GSError(f"Device not found: {w}")
+                raise SavethingError(f"Device not found: {w}")
             out += hit
         return list(dict.fromkeys(out))
     if not cands:
-        print("No other devices available; syncing to the NAS only.")
+        print("No other devices available; syncing to the server only.")
         return []
-    print(f"\nShare with which devices? (NAS {ctx.dev_name(ctx.nas_id)} is always included)")
+    print(f"\nShare with which devices? (the server {ctx.dev_name(ctx.server_id)} is always included)")
     for i, d in enumerate(cands, 1):
         print(f"  {i}. {d.get('name') or d['deviceID'][:7]}  ({d['deviceID'][:7]})")
     while True:
-        text = ask("Numbers, comma-separated; Enter = all; 0 = NAS only: ")
+        text = ask("Numbers, comma-separated; Enter = all; 0 = server only: ")
         if text == "0":
             return []
         if not text:
@@ -1032,24 +1030,24 @@ def allocate_id(ctx, game, taken) -> str:
 def create_share(ctx, reg_dir, game, root, fid, targets, ignores=(), env=None):
     label = LABEL_PREFIX + game
     ignores = list(ignores)
-    nas_known = {d["deviceID"] for d in ctx.nas.devices()}
+    server_known = {d["deviceID"] for d in ctx.server.devices()}
     for t in targets:
-        if t not in nas_known:
-            ctx.nas.add_device(t, ctx.dev_name(t))
-            print(f"  Added device {ctx.dev_name(t)} to the NAS")
-    nas_path = ctx.cfg["nas_folder_root"].rstrip("/") + "/" + fid
+        if t not in server_known:
+            ctx.server.add_device(t, ctx.dev_name(t))
+            print(f"  Added device {ctx.dev_name(t)} to the server")
+    server_path = ctx.cfg["server_root"].rstrip("/") + "/" + fid
     versioning = None
-    keep = int(ctx.cfg.get("nas_versioning_keep") or 0)
+    keep = int(ctx.cfg.get("server_versioning_keep") or 0)
     if keep > 0:
         versioning = {"type": "simple", "params": {"keep": str(keep), "cleanoutDays": "0"},
                       "cleanupIntervalS": 3600}
     try:
-        ctx.nas.put_folder(fid, label, nas_path, [ctx.nas_id, ctx.my_id, *targets], versioning, ignores)
-        ctx.local.put_folder(fid, label, root, [ctx.my_id, ctx.nas_id, *targets], ignores=ignores,
+        ctx.server.put_folder(fid, label, server_path, [ctx.server_id, ctx.my_id, *targets], versioning, ignores)
+        ctx.local.put_folder(fid, label, root, [ctx.my_id, ctx.server_id, *targets], ignores=ignores,
                              ignore_case=bool(env and env.drive_c))
-    except GSError:
+    except SavethingError:
         ctx.local.delete_folder(fid)
-        ctx.nas.delete_folder(fid)
+        ctx.server.delete_folder(fid)
         raise
     entry = {
         "game": game,
@@ -1066,10 +1064,10 @@ def create_share(ctx, reg_dir, game, root, fid, targets, ignores=(), env=None):
         write_entry(reg_dir, entry)
     except OSError as e:
         ctx.local.delete_folder(fid)
-        ctx.nas.delete_folder(fid)
-        raise GSError(f"Failed to write the registry entry; rolled back: {e}")
+        ctx.server.delete_folder(fid)
+        raise SavethingError(f"Failed to write the registry entry; rolled back: {e}")
     ctx.local.dismiss_pending(fid)
-    print(f"  OK {fid}  {root}  ->  NAS:{nas_path}")
+    print(f"  OK {fid}  {root}  ->  server:{server_path}")
     if ignores:
         print(f"     not syncing settings: {', '.join(ignores)}")
     return entry
@@ -1080,11 +1078,11 @@ def add_devices_to_share(ctx, reg_dir, entry, targets):
     if not new:
         print(f"  {entry['folder_id']} is already shared with these devices")
         return
-    nas_known = {d["deviceID"] for d in ctx.nas.devices()}
+    server_known = {d["deviceID"] for d in ctx.server.devices()}
     for t in new:
-        if t not in nas_known:
-            ctx.nas.add_device(t, ctx.dev_name(t))
-    ctx.nas.set_folder_devices(entry["folder_id"], new)
+        if t not in server_known:
+            ctx.server.add_device(t, ctx.dev_name(t))
+    ctx.server.set_folder_devices(entry["folder_id"], new)
     if ctx.local.folder(entry["folder_id"]):
         ctx.local.set_folder_devices(entry["folder_id"], new)
     entry["devices"] = list(dict.fromkeys(entry["devices"] + new))
@@ -1111,7 +1109,7 @@ def ludusavi_config_dirs(cmd) -> list[Path]:
 def prefix_scan_config(ctx, lconf, prefixes) -> Path:
     """A Ludusavi config dir = the user's config plus every prefix as an "otherWine" root, so
     Ludusavi finds saves in a shortcut's prefix whatever the shortcut is called. It lives in
-    gamesync's config dir (Flatpak apps can't see this process's /tmp); the manifest is
+    Savething's config dir (Flatpak apps can't see this process's /tmp); the manifest is
     linked from the user's Ludusavi config so it isn't downloaded again."""
     d = ctx.cfg_dir / "ludusavi-scan"
     d.mkdir(parents=True, exist_ok=True)
@@ -1211,15 +1209,15 @@ def cmd_share(args):
     registry = read_registry(reg_dir)
     local_folders = ctx.local.folders()
     local_ids = {f["id"] for f in local_folders}
-    taken = {f["id"].lower() for f in local_folders} | {f["id"].lower() for f in ctx.nas.folders()} \
+    taken = {f["id"].lower() for f in local_folders} | {f["id"].lower() for f in ctx.server.folders()} \
         | {k.lower() for k in registry}
 
     if args.test_path:  # testing: share the given dir directly, bypassing Ludusavi
-        game = args.game or "GameSync Test"
+        game = args.game or "Savething Test"
         root = norm(os.path.abspath(args.test_path))
         conflict = nesting_conflict(root, local_folders)
         if conflict:
-            raise GSError(f"{root} overlaps existing share {conflict}")
+            raise SavethingError(f"{root} overlaps existing share {conflict}")
         targets = choose_devices(ctx, args.devices if args.devices is not None else "")
         ignores = [x.strip() for x in (args.test_ignore or "").split(",") if x.strip()]
         create_share(ctx, reg_dir, game, root, allocate_id(ctx, game, taken), targets, ignores)
@@ -1311,7 +1309,7 @@ def cmd_share(args):
             create_share(ctx, reg_dir, r.name, root, allocate_id(ctx, r.name, taken), targets, ignores[root],
                          r.env)
             local_folders.append({"id": "?", "path": root})
-    print("\nDone. Run `gamesync accept` on the other devices to receive.")
+    print("\nDone. Run `savething accept` on the other devices to receive.")
 
 
 # ---------------------------------------------------------------- accept
@@ -1441,7 +1439,7 @@ def cmd_accept(args):
         if manifest is None:
             try:
                 manifest = ludusavi_json(ctx, "manifest", "show", "--api")
-            except (GSError, ValueError):
+            except (SavethingError, ValueError):
                 manifest = {}
         return list((manifest.get(game) or {}).get("installDir") or {})
 
@@ -1464,17 +1462,17 @@ def cmd_accept(args):
         if conflict:
             print(f"  ! Skipping {e['game']}: {path} overlaps existing share {conflict}")
             continue
-        nas_f = ctx.nas.folder(fid)
-        if nas_f is None:
-            print(f"  ! Skipping {e['game']}: {fid} not found on the NAS (maybe deleted)")
+        server_f = ctx.server.folder(fid)
+        if server_f is None:
+            print(f"  ! Skipping {e['game']}: {fid} not found on the server (maybe deleted)")
             continue
-        if ctx.my_id not in {d["deviceID"] for d in nas_f["devices"]}:
-            ctx.nas.set_folder_devices(fid, [ctx.my_id])
+        if ctx.my_id not in {d["deviceID"] for d in server_f["devices"]}:
+            ctx.server.set_folder_devices(fid, [ctx.my_id])
         os.makedirs(path, exist_ok=True)
         peers = [d for d in e.get("devices", []) if d in known and d != ctx.my_id]
         ignores = e.get("ignore") or []
         ctx.local.put_folder(fid, e.get("label") or LABEL_PREFIX + e["game"], path,
-                             [ctx.my_id, ctx.nas_id, *peers], ignores=ignores, ignore_case=env is not None)
+                             [ctx.my_id, ctx.server_id, *peers], ignores=ignores, ignore_case=env is not None)
         ctx.local.dismiss_pending(fid)
         local_folders.append({"id": fid, "path": path})
         print(f"  OK {e['game']}  ->  {path}")
@@ -1490,7 +1488,7 @@ def stop_local(ctx, entry):
     label = entry.get("label") or LABEL_PREFIX + entry["game"]
     # delete first: Syncthing drops ignoredFolders entries for folders that are still configured
     ctx.local.delete_folder(fid)
-    for d in dict.fromkeys([ctx.nas_id, *entry.get("devices", [])]):
+    for d in dict.fromkeys([ctx.server_id, *entry.get("devices", [])]):
         if d != ctx.my_id:
             ctx.local.ignore_offer(d, fid, label)
     ctx.local.dismiss_pending(fid)
@@ -1499,12 +1497,12 @@ def stop_local(ctx, entry):
 def unshare_entry(ctx, reg_dir, entry):
     fid = entry["folder_id"]
     label = entry.get("label") or LABEL_PREFIX + entry["game"]
-    # ignore right after deleting (it is dropped while the folder still exists), so the NAS
+    # ignore right after deleting (it is dropped while the folder still exists), so the server
     # does not keep showing an offer from a device that still shares it.
-    # Note: NAS auto-accept for a device overrides this; keep auto-accept off on the NAS.
-    ctx.nas.delete_folder(fid)
+    # Note: server auto-accept for a device overrides this; keep auto-accept off on the server.
+    ctx.server.delete_folder(fid)
     for d in entry.get("devices", []):
-        ctx.nas.ignore_offer(d, fid, label)
+        ctx.server.ignore_offer(d, fid, label)
     stop_local(ctx, entry)
     entry.update(removed=True, removed_by_name=ctx.dev_name(ctx.my_id),
                  removed_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
@@ -1519,7 +1517,7 @@ def cmd_unshare(args):
         w = args.game.lower()
         chosen = [e for e in entries if w in (e["folder_id"].lower(), e["game"].lower())]
         if not chosen:
-            raise GSError(f"No active save share matches: {args.game}")
+            raise SavethingError(f"No active save share matches: {args.game}")
     else:
         if not entries:
             print("No active save shares.")
@@ -1528,13 +1526,13 @@ def cmd_unshare(args):
         for i, e in enumerate(entries, 1):
             path = (local.get(e["folder_id"]) or {}).get("path") or "(not on this device)"
             devs = ", ".join(ctx.dev_name(d) for d in e.get("devices", []) if d != ctx.my_id) or "-"
-            print(f"{i:3}. {e['game']}  [{e['folder_id']}]\n       {path}\n       shared with: NAS, {devs}")
+            print(f"{i:3}. {e['game']}  [{e['folder_id']}]\n       {path}\n       shared with: server, {devs}")
         idx = ask_selection("\nStop syncing which? (e.g. 1,3; Enter to cancel): ", len(entries))
         chosen = [entries[i] for i in idx]
         if not chosen:
             print("Cancelled.")
             return
-    print("\nWill stop syncing (save files are kept on every device and on the NAS):")
+    print("\nWill stop syncing (save files are kept on every device and on the server):")
     for e in chosen:
         print(f"  - {e['game']}  [{e['folder_id']}]")
     if not args.yes and not confirm("Continue?"):
@@ -1543,7 +1541,7 @@ def cmd_unshare(args):
     for e in chosen:
         unshare_entry(ctx, reg_dir, e)
         print(f"  OK stopped {e['game']}")
-    print("\nFiles were not deleted. Other devices stop syncing the next time they run `gamesync accept`.")
+    print("\nFiles were not deleted. Other devices stop syncing the next time they run `savething accept`.")
 
 
 # ---------------------------------------------------------------- status
@@ -1559,13 +1557,13 @@ def cmd_status(args):
         fid = f["id"]
         st = ctx.local.request("GET", "/rest/db/status", query={"folder": fid}) or {}
         try:
-            comp = ctx.local.request("GET", "/rest/db/completion", query={"folder": fid, "device": ctx.nas_id})
-            nas_pct = f"{comp.get('completion', 0):.0f}%"
-        except GSError:
-            nas_pct = "?"
+            comp = ctx.local.request("GET", "/rest/db/completion", query={"folder": fid, "device": ctx.server_id})
+            server_pct = f"{comp.get('completion', 0):.0f}%"
+        except SavethingError:
+            server_pct = "?"
         devs = ", ".join(ctx.dev_name(d["deviceID"]) for d in f["devices"] if d["deviceID"] != ctx.my_id)
         game = (registry.get(fid) or {}).get("game") or f.get("label")
-        print(f"{game}\n    {f['path']}\n    state: {st.get('state', '?')}  NAS sync: {nas_pct}  devices: {devs}")
+        print(f"{game}\n    {f['path']}\n    state: {st.get('state', '?')}  Server sync: {server_pct}  devices: {devs}")
         ignores = (registry.get(fid) or {}).get("ignore") or []
         if ignores:
             print(f"    not syncing {len(ignores)} settings paths: {', '.join(ignores)}")
@@ -1573,9 +1571,9 @@ def cmd_status(args):
     leftover, waiting = split_registry(registry, ctx.my_id, local_ids)
     if leftover:
         print(f"\n{len(leftover)} shares were unshared on another device: "
-              f"{', '.join(e['game'] for e in leftover)} (run gamesync accept to stop syncing them here)")
+              f"{', '.join(e['game'] for e in leftover)} (run savething accept to stop syncing them here)")
     if waiting:
-        print(f"\n{len(waiting)} shares waiting to be accepted: {', '.join(e['game'] for e in waiting)} (run gamesync accept)")
+        print(f"\n{len(waiting)} shares waiting to be accepted: {', '.join(e['game'] for e in waiting)} (run savething accept)")
 
 
 # ---------------------------------------------------------------- main
@@ -1594,16 +1592,16 @@ MENU = [
 def run(args) -> int:
     try:
         args.func(args)
-    except GSError as e:
+    except SavethingError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
     return 0
 
 
 def interactive_menu(ap, base) -> int:
-    """Shown when gamesync is started without a command, e.g. by double-clicking the exe."""
+    """Shown when Savething is started without a command, e.g. by double-clicking the exe."""
     while True:
-        print("\n=== gamesync: game save sync ===")
+        print("\n=== Savething: game save sync ===")
         cfg_dir = Path(base[base.index("--config-dir") + 1]) if "--config-dir" in base else default_config_dir()
         if not (cfg_dir / "config.json").is_file():
             print("This device is not set up yet; choose 'init' first.")
@@ -1627,16 +1625,16 @@ def main(argv=None):
     for s in (sys.stdout, sys.stderr):
         if isinstance(s, io.TextIOWrapper):
             s.reconfigure(encoding="utf-8")
-    ap = argparse.ArgumentParser(prog="gamesync", description="Sync game saves with Ludusavi + Syncthing. "
+    ap = argparse.ArgumentParser(prog="savething", description="Sync game saves with Ludusavi + Syncthing. "
                                  "Run without a command for an interactive menu.")
-    ap.add_argument("--config-dir", help="config dir (default %%APPDATA%%\\gamesync or ~/.config/gamesync)")
+    ap.add_argument("--config-dir", help="config dir (default %%APPDATA%%\\savething or ~/.config/savething)")
     ap.add_argument("--st-home", help="local Syncthing home dir (auto-detected by default)")
     sub = ap.add_subparsers(dest="cmd")
 
     p = sub.add_parser("init", help="initialize this device (once per device)")
-    p.add_argument("--nas-url")
-    p.add_argument("--nas-key")
-    p.add_argument("--nas-root", help="save directory on the NAS (default /srv/media/game/sync)")
+    p.add_argument("--server-url")
+    p.add_argument("--server-key")
+    p.add_argument("--server-root", help="save directory on the server (default /srv/media/game/savething)")
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("share", help="pick games and create shares")

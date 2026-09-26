@@ -1,8 +1,8 @@
-# SaveSync
+# Savething
 
-Sync PC game saves across your gaming devices.
+Sync PC game saves across your gaming devices. [中文](README_ch.md)
 
-SaveSync uses [Ludusavi](https://github.com/mtkennerly/ludusavi) to find each game's save folder and [Syncthing](https://syncthing.net) to sync it. An always-on server relays the saves, so your devices don't need to be on at the same time. Steam games are skipped, since Steam Cloud already covers them.
+Savething uses [Ludusavi](https://github.com/mtkennerly/ludusavi) to find each game's save folder and [Syncthing](https://syncthing.net) to sync it. An always-on server relays the saves, so your devices don't need to be on at the same time.
 
 Share a game once on one device, accept it once on the others, and Syncthing handles the rest.
 
@@ -10,10 +10,9 @@ Share a game once on one device, accept it once on the others, and Syncthing han
 
 ## Requirements
 
-- **An always-on server** running Syncthing: a NAS, home server, Raspberry Pi, or any PC that stays on. Any OS.
-- **Windows gaming devices** and/or a **Steam Deck** with Syncthing installed. See [Steam Deck](#steam-deck) for what is supported there.
+- **An always-on server** running Syncthing.
+- **Windows** / **SteamOS** gaming devices with Syncthing installed. See [Steam Deck](#steam-deck) for what is supported on the Deck.
 - **Ludusavi** on devices that share games. Devices that only receive saves don't need it.
-- **Python 3.11+** only if you use `gamesync.py` instead of `gamesync.exe`. No extra packages needed.
 
 ---
 
@@ -24,30 +23,27 @@ Share a game once on one device, accept it once on the others, and Syncthing han
 In the server's Syncthing web GUI, open **Actions → Settings → GUI**:
 
 - Set **GUI Listen Address** to `0.0.0.0:8384`, so your devices can reach the API.
-- Set a GUI username and password.
 - Copy the **API Key**.
 
-Then create a folder for saves that Syncthing can write to. The default is `/srv/media/game/sync`.
-
-Don't expose port 8384 to the internet. To use SaveSync away from home, use a VPN such as Tailscale or ZeroTier.
+Then create a folder for saves that Syncthing can write to, e.g. `/srv/media/game/savething`.
 
 ### 2. Pair devices
 
 In Syncthing, add every gaming device and the server to each other, and add the gaming devices to each other. Wait until they all show **Connected**.
 
-Then, on the server, edit each gaming device → **Sharing** tab → uncheck **Auto Accept**. Otherwise, unshared games can come back on their own.
+If Auto Accept is on, turn it off: **Sharing** tab → uncheck **Auto Accept**. Otherwise, unshared games can come back on their own.
 
-Devices are shown by their Syncthing name, so give them clear names. To hide devices, add name patterns to `exclude_device_patterns` in `config.json`.
+Devices are shown by their Syncthing name. To hide some devices, add name patterns to `exclude_device_patterns` in `config.json`.
 
 ### 3. Initialize each gaming device
 
-Double-click `gamesync.exe`, choose `6. init`, and enter the server's save folder, address (e.g. `http://192.168.1.10:8384`), and API key. Or run:
+Double-click `savething.exe`, choose `6. init`, and enter the server's save folder, address (e.g. `http://192.168.1.10:8384`), and API key. Or set everything in one command, with no prompts:
 
 ```
-gamesync.exe init --nas-url http://<server IP>:8384 --nas-key <API key> --nas-root <save folder>
+savething.exe init --server-url http://<server IP>:8384 --server-key <API key> --server-root <save folder>
 ```
 
-`--nas-root` can be left out if you use the default folder. For the Python version, replace `gamesync.exe` with `python gamesync.py` in all commands.
+Leave out `--server-root` if the save folder is the default `/srv/media/game/savething`.
 
 You're done when you see `Init complete.` Run `5. status` to check the connection, then `2. preview` to see what would be synced.
 
@@ -55,7 +51,7 @@ You're done when you see `Init complete.` Run `5. status` to check the connectio
 
 ## Usage
 
-Double-click `gamesync.exe` to open the menu, or run the commands directly:
+Double-click `savething.exe` to open the menu, or run the commands directly:
 
 | Command | Menu | What it does |
 |---|---|---|
@@ -80,26 +76,38 @@ Double-click `gamesync.exe` to open the menu, or run the commands directly:
 
 ---
 
+## How it works
+
+`share` asks Ludusavi where the game keeps its saves. Savething creates the share on this device and on the server, and records the save path in the `savething-registry` folder relative to the home folder, e.g. `<home>/Saved Games/Hades II`. On another device, `accept` fills in its own home folder. After that, Syncthing does all the syncing.
+
+On the Steam Deck, a Proton prefix's `drive_c/users/steamuser` is the home folder, so the same path works there:
+
+```
+Windows:    C:/Users/you/Saved Games/Hades II
+Steam Deck: .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades II
+```
+
+---
+
 ## Good to know
 
 - **Excluded games:** Steam games, and games that only save to the Windows registry.
-- **Settings files:** graphics and control settings are not synced by default, so each device keeps its own. You're asked for each game during `share`.
+- **`[ignored in Ludusavi]`** means the game is unchecked in Ludusavi's Backup tab. It's only a note: the game can still be shared and synced normally.
+- **Settings files:** graphics and control settings are not synced by default, so each device can keep its own. You're asked for each game during `share`.
 - **Games with saves in several places** get one synced folder per location.
 - **Existing saves:** if a device already has saves for a game, the newest file wins. The older one is kept as `*.sync-conflict-*`.
 - **Backups:** the server keeps the last 10 versions of every save file in `.stversions` inside the game's folder.
 - **Unshare** keeps all save files. Other devices stop syncing the next time they run `accept`.
-- **Don't delete the `gamesync-registry` folder.** `accept` needs it to know where each game's saves go.
+- **Don't delete the `savething-registry` folder.** `accept` needs it to know where each game's saves go.
 
 ## Steam Deck
 
-Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. Run it in Desktop Mode with `python3 gamesync.py` (SteamOS ships Python 3).
+Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. Run it in Desktop Mode with `python3 savething.py` (SteamOS ships Python 3).
 
-- **Install** Ludusavi and SyncThingy (Syncthing) from Discover. Both are Flatpaks and are found automatically.
-- **Shortcut names don't matter.** `share` has Ludusavi scan every non-Steam shortcut's Proton prefix (`~/.local/share/Steam/steamapps/compatdata/<appid>/pfx`) and recognize games by their save paths. It uses a separate Ludusavi config in gamesync's config dir (`ludusavi-scan`); your own Ludusavi config is not changed.
+- **Install** Ludusavi and SyncThingy (Syncthing) from Discover. Both are found automatically.
 - **Start the game once** before `accept`, so Proton creates its prefix.
-- **Paths:** the prefix's `drive_c/users/steamuser` stands in for `C:\Users\<you>`, and `C:/` for `drive_c/`. Saves on other drives (D:, ...) can't be mapped and are skipped.
-- **accept** finds the game's shortcut automatically: by the game's name as the shortcut name, exe name or a folder on the exe path; then by a prefix that already has the save folder; then by the game's install folder names from Ludusavi's manifest. Only if all fail does it ask. The answer is kept in `config.json` (`prefix_map`).
-- The prefix's `*.reg` registry files are never synced.
+- **Shortcut names don't matter.** Savething finds which shortcut runs the game; if it can't tell, it asks once and remembers.
+- Only saves on `C:` can be mapped. Saves on other drives are skipped.
 
 ---
 
@@ -108,23 +116,23 @@ Supported: **Windows games added to Steam as non-Steam games and run with Proton
 **`accept` finds nothing, but Syncthing shows an invitation**
 Wait a few seconds for the registry to sync from the server, then run `accept` again.
 
-**"Cannot reach NAS Syncthing"**
+**"Cannot reach server Syncthing"**
 Open `http://<server IP>:8384` in a browser on this device. If it doesn't load, check the server's GUI Listen Address and firewall.
 
-**"The NAS Syncthing does not know this device yet" / "has not added the NAS device yet"**
+**"The server Syncthing does not know this device yet" / "has not added the server device yet"**
 The device and the server aren't paired in Syncthing.
 
 **A device is missing from the list in `share`**
 It isn't added in this device's Syncthing, or its name matches `exclude_device_patterns`.
 
 **"Cannot find ludusavi"**
-Set the full path in the `"ludusavi"` entry of `%APPDATA%\gamesync\config.json`, e.g. `"C:\\Tools\\ludusavi.exe"`.
+Set the full path in the `"ludusavi"` entry of `%APPDATA%\savething\config.json`, e.g. `"C:\\Tools\\ludusavi.exe"`.
 
 **"Cannot find the local Syncthing config.xml"**
-Run gamesync with `--st-home <Syncthing config folder>`.
+Run savething with `--st-home <Syncthing config folder>`.
 
-**Windows SmartScreen blocks gamesync.exe**
-The exe is unsigned. Click **More info → Run anyway**, or use `python gamesync.py` instead.
+**Windows SmartScreen blocks savething.exe**
+The exe is unsigned. Click **More info → Run anyway**, or use `python savething.py` instead.
 
 **Changing the server address or API key**
-Run `init` again, or edit `%APPDATA%\gamesync\config.json`.
+Run `init` again, or edit `%APPDATA%\savething\config.json`.

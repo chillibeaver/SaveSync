@@ -3,10 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import gamesync as g
+import savething as g
 
 DATA = Path(__file__).parent / "testdata"
-HOME = "C:/Users/ramray"
+HOME = "C:/Users/player"
 STEAM = ["E:/steam"]
 INSTALLED = {570, 578080}  # Dota 2, PUBG
 SKIP = STEAM + ["C:/Program Files/WindowsApps"]
@@ -20,21 +20,21 @@ def load():
 
 class PortablePath(unittest.TestCase):
     def test_home_relative_round_trip_with_other_username(self):
-        p = g.to_portable("C:\\Users\\ramray\\AppData\\LocalLow\\Team Cherry\\Hollow Knight", HOME)
+        p = g.to_portable("C:\\Users\\player\\AppData\\LocalLow\\Team Cherry\\Hollow Knight", HOME)
         self.assertEqual(p, "<home>/AppData/LocalLow/Team Cherry/Hollow Knight")
-        self.assertEqual(g.from_portable(p, "C:/Users/claw"),
-                         "C:/Users/claw/AppData/LocalLow/Team Cherry/Hollow Knight")
+        self.assertEqual(g.from_portable(p, "C:/Users/friend"),
+                         "C:/Users/friend/AppData/LocalLow/Team Cherry/Hollow Knight")
 
     def test_case_insensitive_home(self):
-        self.assertEqual(g.to_portable("c:/users/RAMRAY/Saved Games/X", HOME), "<home>/Saved Games/X")
+        self.assertEqual(g.to_portable("c:/users/PLAYER/Saved Games/X", HOME), "<home>/Saved Games/X")
 
     def test_outside_home_stays_absolute(self):
         p = g.to_portable("C:/XboxGames/GameSave/pgs/u_1", HOME)
         self.assertEqual(p, "C:/XboxGames/GameSave/pgs/u_1")
-        self.assertEqual(g.from_portable(p, "C:/Users/claw"), p)
+        self.assertEqual(g.from_portable(p, "C:/Users/friend"), p)
 
     def test_similar_prefix_is_not_home(self):
-        self.assertEqual(g.to_portable("C:/Users/ramray2/x", HOME), "C:/Users/ramray2/x")
+        self.assertEqual(g.to_portable("C:/Users/player2/x", HOME), "C:/Users/player2/x")
 
 
 class Roots(unittest.TestCase):
@@ -65,7 +65,7 @@ class Roots(unittest.TestCase):
     def test_forza_two_locations(self):
         roots = self.roots("Forza Horizon 6")[0]
         self.assertEqual(sorted(roots), sorted([
-            "C:/XboxGames/GameSave/pgs/u_2535405491797049_16D460",
+            "C:/XboxGames/GameSave/pgs/u_1111222233334444_16D460",
             HOME + "/AppData/Local/ForzaHorizon6/LocalStorage_Shared"]))
 
     def test_sibling_dirs_merge(self):
@@ -146,13 +146,13 @@ class Misc(unittest.TestCase):
 
     def test_registry_skips_conflicts(self):
         with tempfile.TemporaryDirectory() as d:
-            g.write_entry(Path(d), {"folder_id": "gs-a", "game": "A"})
-            (Path(d) / "gs-a.sync-conflict-20260101-000000-ABCDEFG.json").write_text('{"folder_id":"gs-x"}')
-            (Path(d) / "gs-broken.json").write_text("{")
-            self.assertEqual(list(g.read_registry(Path(d))), ["gs-a"])
+            g.write_entry(Path(d), {"folder_id": "save-a", "game": "A"})
+            (Path(d) / "save-a.sync-conflict-20260101-000000-ABCDEFG.json").write_text('{"folder_id":"save-x"}')
+            (Path(d) / "save-broken.json").write_text("{")
+            self.assertEqual(list(g.read_registry(Path(d))), ["save-a"])
 
     def test_nesting_conflict(self):
-        folders = [{"id": "gs-a", "path": "C:\\Users\\x\\AppData\\Local\\Game\\Saved\\Config"}]
+        folders = [{"id": "save-a", "path": "C:\\Users\\x\\AppData\\Local\\Game\\Saved\\Config"}]
         self.assertIsNotNone(g.nesting_conflict("C:/Users/x/AppData/Local/Game/Saved", folders))
         self.assertIsNone(g.nesting_conflict("C:/Users/x/AppData/Local/Game2", folders))
 
@@ -174,7 +174,7 @@ class Settings(unittest.TestCase):
     def test_pattern_regex(self):
         rx = g.pattern_regex("<winLocalAppData>/Foo/*/save?.dat", HOME)
         self.assertTrue(rx.match(HOME + "/AppData/Local/Foo/profile/save1.dat"))
-        self.assertTrue(rx.match("c:/users/RAMRAY/appdata/local/foo/p/SAVE1.DAT"))
+        self.assertTrue(rx.match("c:/users/PLAYER/appdata/local/foo/p/SAVE1.DAT"))
         self.assertFalse(rx.match(HOME + "/AppData/Local/Foo/a/b/save1.dat"))
         deep = g.pattern_regex("<winDocuments>/Game/**/*.sav", HOME)
         self.assertTrue(deep.match(HOME + "/Documents/Game/a/b/c.sav"))
@@ -229,19 +229,131 @@ class Unshare(unittest.TestCase):
     def test_split_registry(self):
         me, other = "ME", "OTHER"
         reg = {
-            "gs-a": {"folder_id": "gs-a", "devices": [other, me]},                   # offered, not here
-            "gs-b": {"folder_id": "gs-b", "devices": [other, me]},                   # already here
-            "gs-c": {"folder_id": "gs-c", "devices": [other, me], "removed": True},  # unshared, still here
-            "gs-d": {"folder_id": "gs-d", "devices": [other, me], "removed": True},  # unshared, gone here
-            "gs-e": {"folder_id": "gs-e", "devices": [other]},                       # not for me
+            "save-a": {"folder_id": "save-a", "devices": [other, me]},                   # offered, not here
+            "save-b": {"folder_id": "save-b", "devices": [other, me]},                   # already here
+            "save-c": {"folder_id": "save-c", "devices": [other, me], "removed": True},  # unshared, still here
+            "save-d": {"folder_id": "save-d", "devices": [other, me], "removed": True},  # unshared, gone here
+            "save-e": {"folder_id": "save-e", "devices": [other]},                       # not for me
         }
-        to_remove, to_accept = g.split_registry(reg, me, {"gs-b", "gs-c"})
-        self.assertEqual([e["folder_id"] for e in to_remove], ["gs-c"])
-        self.assertEqual([e["folder_id"] for e in to_accept], ["gs-a"])
+        to_remove, to_accept = g.split_registry(reg, me, {"save-b", "save-c"})
+        self.assertEqual([e["folder_id"] for e in to_remove], ["save-c"])
+        self.assertEqual([e["folder_id"] for e in to_accept], ["save-a"])
 
     def test_active(self):
         self.assertTrue(g.active({"folder_id": "x"}))
         self.assertFalse(g.active({"folder_id": "x", "removed": True}))
+
+
+LIB = "/home/deck/.local/share/Steam"
+SC_ID = 3141592653  # non-Steam shortcut app ID
+PFX = f"{LIB}/steamapps/compatdata/{SC_ID}/pfx"
+PHOME = PFX + "/drive_c/users/steamuser"
+
+
+def vdf_shortcut(idx, appid, name, exe):
+    def s(t, k, v=b""):
+        return bytes([t]) + k.encode() + b"\0" + v
+    body = s(2, "appid", appid.to_bytes(4, "little")) if appid is not None else b""
+    body += s(1, "AppName", name.encode() + b"\0") + s(1, "Exe", exe.encode() + b"\0")
+    body += s(0, "tags") + b"\x08"
+    return s(0, str(idx)) + body + b"\x08"
+
+
+class Proton(unittest.TestCase):
+    def setUp(self):
+        self.env = g.prefix_env(PFX)
+
+    def test_shortcuts_vdf(self):
+        data = (b"\x00shortcuts\x00" + vdf_shortcut(0, SC_ID, "Hollow Knight", '"/games/hk.exe"')
+                + vdf_shortcut(1, None, "Old", "x.exe") + b"\x08\x08")
+        sc = g.shortcut_entries(data)
+        self.assertEqual(sc[SC_ID], g.Shortcut("Hollow Knight", '"/games/hk.exe"', ""))
+        old = [a for a, x in sc.items() if x.name == "Old"][0]
+        self.assertTrue(old & 0x80000000)
+
+    def test_prefix_of(self):
+        self.assertEqual(g.proton_prefix_of(PHOME + "/AppData/x.sav", [LIB]), (SC_ID, PFX))
+        self.assertIsNone(g.proton_prefix_of(PFX + "/user.reg", [LIB]))
+        self.assertIsNone(g.proton_prefix_of("/home/deck/.local/share/Game/x", [LIB]))
+
+    def test_windows_entry_maps_into_prefix(self):
+        self.assertEqual(g.from_portable("<home>/AppData/LocalLow/Team Cherry/Hollow Knight", self.env),
+                         PHOME + "/AppData/LocalLow/Team Cherry/Hollow Knight")
+        self.assertEqual(g.from_portable("C:/ProgramData/Game", self.env), PFX + "/drive_c/ProgramData/Game")
+        self.assertIsNone(g.from_portable("D:/Games/Foo/save", self.env))
+
+    def test_prefix_path_to_portable(self):
+        self.assertEqual(g.to_portable(PHOME + "/Saved Games/Hades II", self.env), "<home>/Saved Games/Hades II")
+        self.assertEqual(g.to_portable(PFX + "/drive_c/ProgramData/Game", self.env), "C:/ProgramData/Game")
+
+    def test_roots_in_prefix(self):
+        files = [PHOME + "/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat",
+                 PHOME + "/AppData/LocalLow/Team Cherry/Hollow Knight/user2.dat"]
+        roots, skipped, problems = g.compute_roots(
+            files, ["<winLocalAppDataLow>/Team Cherry/Hollow Knight/*.dat"], self.env, [])
+        self.assertEqual(roots, [PHOME + "/AppData/LocalLow/Team Cherry/Hollow Knight"])
+        self.assertEqual((skipped, problems), ([], []))
+
+    def test_file_directly_in_prefix_broad_dir(self):
+        roots, _, problems = g.compute_roots([PHOME + "/Documents/save.dat"], [], self.env, [])
+        self.assertEqual((roots, problems), ([], [PHOME + "/Documents/save.dat"]))
+
+    def test_settings_match_case_insensitively(self):
+        entry = {"files": {"<winDocuments>/My Games/X/Config": {"tags": ["config"]},
+                           "<winDocuments>/My Games/X/Saves": {"tags": ["save"]}}}
+        files = [PHOME + "/documents/my games/X/config/a.ini", PHOME + "/documents/my games/X/Saves/1.sav"]
+        saves, configs = g.classify_files(files, entry, self.env)
+        self.assertEqual(configs, [files[0]])
+
+    def test_pick_files(self):
+        other = f"{LIB}/steamapps/compatdata/570/pfx/drive_c/users/steamuser/AppData/x"
+        sc = {SC_ID: g.Shortcut("Game")}
+        env, files, reason = g.pick_proton_files([PHOME + "/AppData/Local/G/a", PFX + "/user.reg"], [LIB], sc)
+        self.assertEqual((env, files, reason), (self.env, [PHOME + "/AppData/Local/G/a"], None))
+        self.assertEqual(g.pick_proton_files([other], [LIB], sc)[2], "Steam game (Proton)")
+        self.assertEqual(g.pick_proton_files([PFX + "/user.reg"], [LIB], sc)[2], "registry-only saves, cannot sync")
+        self.assertIn("not in a Proton prefix", g.pick_proton_files(["/home/deck/.local/share/G/a"], [LIB], sc)[2])
+
+    def test_shortcut_keys(self):
+        sc = g.Shortcut("HK", '"/home/deck/Games/Hollow Knight/hollow_knight.exe"', '"/home/deck/Games/Hollow Knight/"')
+        self.assertTrue({"hk", "hollowknight", "games"} <= sc.keys())
+
+    @unittest.skipIf(g.IS_WINDOWS, "Linux paths")
+    def test_match_shortcut(self):
+        with tempfile.TemporaryDirectory() as d:
+            for a in (1, 2, 3):
+                (Path(d) / f"steamapps/compatdata/{a}/pfx/drive_c/users/steamuser").mkdir(parents=True)
+            sc = {1: g.Shortcut("hollow_knight.exe", "/x/hollow_knight.exe"),
+                  2: g.Shortcut("Game Two", "/g/HadesII/Hades2.exe"),
+                  3: g.Shortcut("Misc", "/g/stuff/start.exe")}
+            hk = {"game": "Hollow Knight", "portable_path": "<home>/AppData/LocalLow/Team Cherry/Hollow Knight"}
+            self.assertEqual(g.match_shortcut(hk, sc, [d]), 1)  # exe name
+            hades = {"game": "Hades II", "portable_path": "<home>/Saved Games/Hades II"}
+            self.assertEqual(g.match_shortcut(hades, sc, [d]), 2)  # folder on the exe path
+            cel = {"game": "Celeste", "portable_path": "<home>/AppData/Local/Celeste"}
+            self.assertIsNone(g.match_shortcut(cel, sc, [d]))
+            self.assertEqual(g.match_shortcut(cel, sc, [d], lambda: ["stuff"]), 3)  # manifest installDir
+            (Path(d) / "steamapps/compatdata/3/pfx/drive_c/users/steamuser/appdata/local/celeste").mkdir(parents=True)
+            self.assertEqual(g.match_shortcut(cel, sc, [d]), 3)  # save dir already there
+
+    @unittest.skipIf(g.IS_WINDOWS, "Linux paths")
+    def test_resolve_ci(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "AppData" / "LocalLow" / "team cherry").mkdir(parents=True)
+            self.assertEqual(g.resolve_ci(d + "/appdata/LocalLow/Team Cherry/Hollow Knight"),
+                             g.norm(d) + "/AppData/LocalLow/team cherry/Hollow Knight")
+
+    def test_find_prefix(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(g.find_prefix(SC_ID, [d]))
+            (Path(d) / f"steamapps/compatdata/{SC_ID}/pfx/drive_c/users/steamuser").mkdir(parents=True)
+            self.assertEqual(g.find_prefix(SC_ID, [d]), g.norm(d) + f"/steamapps/compatdata/{SC_ID}/pfx")
+
+
+class Config(unittest.TestCase):
+    def test_ludusavi_cmd(self):
+        self.assertEqual(g.ludusavi_cmd({"ludusavi": ["flatpak", "run", "x"]}), ["flatpak", "run", "x"])
+        self.assertEqual(g.ludusavi_cmd({"ludusavi": "C:/Tools/ludusavi.exe"}), ["C:/Tools/ludusavi.exe"])
 
 
 class Menu(unittest.TestCase):
@@ -263,8 +375,8 @@ class Menu(unittest.TestCase):
         self.assertIn("not set up yet", out)
         self.assertIn("Invalid choice", out)
         self.assertIn("--- status ---", out)
-        self.assertIn("NAS is not configured", err)
-        self.assertEqual(out.count("=== gamesync"), 3)  # menu shown again after each step
+        self.assertIn("Server is not configured", err)
+        self.assertEqual(out.count("=== Savething"), 3)  # menu shown again after each step
 
     def test_menu_exit_on_eof(self):
         code, out, _ = self.run_menu([EOFError()])
