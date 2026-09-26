@@ -37,7 +37,9 @@ Devices are shown by their Syncthing name. To hide some devices, add name patter
 
 ### 3. Initialize each gaming device
 
-Double-click `savething.exe`, choose `6. init`, and enter the server's save folder, address (e.g. `http://192.168.1.10:8384`), and API key. Or set everything in one command, with no prompts:
+Double-click `savething.exe`, choose `6. init`, and enter the server's save folder, address (e.g. `http://192.168.1.10:8384`), and API key. 
+
+Or set everything in one command, with no prompts:
 
 ```
 savething.exe init --server-url http://<server IP>:8384 --server-key <API key> --server-root <save folder>
@@ -102,7 +104,8 @@ SteamOS:    .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades
 
 ## SteamOS
 
-Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. In Desktop Mode, download `savething-linux` from Releases and run it in Konsole: `chmod +x savething-linux && ./savething-linux`. `python3 savething.py` also works (SteamOS ships Python 3).
+Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. In Desktop Mode, download `savething-linux` from Releases and run it in Konsole: `chmod +x savething-linux && ./savething-linux`. 
+`python3 savething.py` also works.
 
 - **Install** Ludusavi and SyncThingy (Syncthing) from Discover. Both are found automatically.
 - **Start the game once** before `accept`, so Proton creates its prefix.
