@@ -50,13 +50,12 @@ jobs:
           python -m pip install --upgrade pip pyinstaller
           pyinstaller --onefile --console --name savething savething.py
 
-      # savething.py is attached too: SteamOS runs it directly with python3
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          gh release create $env:VERSION dist/savething.exe savething.py `
+          gh release create $env:VERSION dist/savething.exe `
             --target $env:GITHUB_SHA `
             --title "Savething $env:VERSION" `
             --generate-notes

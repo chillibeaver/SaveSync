@@ -104,7 +104,12 @@ SteamOS:    .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades
 
 ## SteamOS
 
-Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. In Desktop Mode, download `savething.py` from Releases and run it in Konsole: `python3 savething.py`.
+Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. In Desktop Mode, open Konsole and run:
+
+```
+curl -OL https://raw.githubusercontent.com/chillibeaver/Savething/refs/heads/main/savething.py
+python3 savething.py
+```
 
 - **Install** Ludusavi and SyncThingy (Syncthing) from Discover. Both are found automatically.
 - **Start the game once** before `accept`, so Proton creates its prefix.

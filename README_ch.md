@@ -102,7 +102,12 @@ SteamOS：    .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Had
 
 ## SteamOS
 
-支持：**以非 Steam 游戏身份加进 Steam、用 Proton 运行的 Windows 游戏**。Steam 游戏交给 Steam 云存档，原生 Linux 游戏不支持。在桌面模式下，从 Releases 下载 `savething.py`，在 Konsole 里运行：`python3 savething.py`。
+支持：**以非 Steam 游戏身份加进 Steam、用 Proton 运行的 Windows 游戏**。Steam 游戏交给 Steam 云存档，原生 Linux 游戏不支持。在桌面模式下打开 Konsole，运行：
+
+```
+curl -OL https://raw.githubusercontent.com/chillibeaver/Savething/refs/heads/main/savething.py
+python3 savething.py
+```
 
 - **安装：** 在 Discover 里装 Ludusavi 和 SyncThingy（Syncthing），都会被自动找到。
 - **`accept` 之前先启动一次游戏**，让 Proton 建好前缀。
