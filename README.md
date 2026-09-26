@@ -11,7 +11,7 @@ Share a game once on one device, accept it once on the others, and Syncthing han
 ## Requirements
 
 - **An always-on server** running Syncthing.
-- **Windows** / **SteamOS** gaming devices with Syncthing installed. See [Steam Deck](#steam-deck) for what is supported on the Deck.
+- **Windows** / **SteamOS** gaming devices with Syncthing installed. See [SteamOS](#steamos) for what is supported there.
 - **Ludusavi** on devices that share games. Devices that only receive saves don't need it.
 
 ---
@@ -80,11 +80,11 @@ Double-click `savething.exe` to open the menu, or run the commands directly:
 
 `share` asks Ludusavi where the game keeps its saves. Savething creates the share on this device and on the server, and records the save path in the `savething-registry` folder relative to the home folder, e.g. `<home>/Saved Games/Hades II`. On another device, `accept` fills in its own home folder. After that, Syncthing does all the syncing.
 
-On the Steam Deck, a Proton prefix's `drive_c/users/steamuser` is the home folder, so the same path works there:
+On SteamOS, a Proton prefix's `drive_c/users/steamuser` is the home folder, so the same path works there:
 
 ```
 Windows:    C:/Users/you/Saved Games/Hades II
-Steam Deck: .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades II
+SteamOS:    .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades II
 ```
 
 ---
@@ -100,7 +100,7 @@ Steam Deck: .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades
 - **Unshare** keeps all save files. Other devices stop syncing the next time they run `accept`.
 - **Don't delete the `savething-registry` folder.** `accept` needs it to know where each game's saves go.
 
-## Steam Deck
+## SteamOS
 
 Supported: **Windows games added to Steam as non-Steam games and run with Proton**. Steam games are left to Steam Cloud; native Linux games are not supported. Run it in Desktop Mode with `python3 savething.py` (SteamOS ships Python 3).
 

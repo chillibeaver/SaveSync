@@ -11,7 +11,7 @@ Savething 用 [Ludusavi](https://github.com/mtkennerly/ludusavi) 找到每个游
 ## 前置要求
 
 - **一台常开的服务器**，运行 Syncthing
-- **Windows**/ **SteamOS**游戏设备，装好 Syncthing。Deck 上支持哪些游戏见 [Steam Deck](#steam-deck)。
+- **Windows**/ **SteamOS**游戏设备，装好 Syncthing。SteamOS 上支持哪些游戏见 [SteamOS](#steamos)。
 - **Ludusavi**：发起共享的设备需要。只接收存档的设备不用装。
 
 ---
@@ -80,11 +80,11 @@ savething.exe init --server-url http://<服务器IP>:8384 --server-key <API 密�
 
 `share` 向 Ludusavi 查询游戏的存档位置。Savething 在本机和服务器上建好共享，并把存档路径按用户目录记进 `savething-registry` 文件夹，比如 `<home>/Saved Games/Hades II`。在另一台设备上，`accept` 换上本机的用户目录。之后的同步全部由 Syncthing 完成。
 
-在 Steam Deck 上，Proton 前缀里的 `drive_c/users/steamuser` 就是用户目录，所以同一个路径也能用：
+在 SteamOS 上，Proton 前缀里的 `drive_c/users/steamuser` 就是用户目录，所以同一个路径也能用：
 
 ```
 Windows：    C:/Users/you/Saved Games/Hades II
-Steam Deck： .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades II
+SteamOS：    .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Hades II
 ```
 
 ---
@@ -100,7 +100,7 @@ Steam Deck： .../compatdata/<appid>/pfx/drive_c/users/steamuser/Saved Games/Had
 - **Unshare** 会保留所有存档文件。其他设备下次运行 `accept` 时停止同步。
 - **不要删除 `savething-registry` 文件夹。** `accept` 靠它知道每个游戏的存档该放哪。
 
-## Steam Deck
+## SteamOS
 
 支持：**以非 Steam 游戏身份加进 Steam、用 Proton 运行的 Windows 游戏**。Steam 游戏交给 Steam 云存档，原生 Linux 游戏不支持。在桌面模式下用 `python3 savething.py` 运行（SteamOS 自带 Python 3）。
 
